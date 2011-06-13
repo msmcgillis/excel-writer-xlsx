@@ -224,15 +224,28 @@ sub set_x_axis {
     my $self = shift;
     my %arg  = @_;
 
+    if (exists($arg{name})) {
+      $arg{title}{name}=$arg{name};                # For backwards compatability
+    }
+
+    if (exists($arg{name_formula})) {
+      $arg{title}{name_formula}=$arg{name_formula};# For backwards compatability
+    }
+
     my ( $name, $name_formula ) =
-      $self->_process_names( $arg{name}, $arg{name_formula} );
+      $self->_process_names( $arg{title}{name}, $arg{title}{name_formula} );
 
     my $data_id = $self->_get_data_id( $name_formula, $arg{data} );
 
-    $self->{_x_axis_name}    = $name;
-    $self->{_x_axis_formula} = $name_formula;
-    $self->{_x_axis_data_id} = $data_id;
-    $self->{_x_axis_reverse} = $arg{reverse};
+    $self->{_x_axis_name}       = $name;
+    $self->{_x_axis_formula}    = $name_formula;
+    $self->{_x_axis_data_id}    = $data_id;
+    $self->{_x_axis_reverse}    = $arg{reverse};
+    $self->{_x_axis_title_font} = $arg{title}{font}
+             if (exists($arg{title}{font}) && ref($arg{title}{font}) eq "HASH");
+    $self->{_x_axis_font}       = $arg{font}
+             if (exists($arg{font}) && ref($arg{font}) eq "HASH");
+
 }
 
 
@@ -247,15 +260,27 @@ sub set_y_axis {
     my $self = shift;
     my %arg  = @_;
 
+    if (exists($arg{name})) {
+      $arg{title}{name}=$arg{name};                # For backwards compatability
+    }
+
+    if (exists($arg{name_formula})) {
+      $arg{title}{name_formula}=$arg{name_formula};# For backwards compatability
+    }
+
     my ( $name, $name_formula ) =
-      $self->_process_names( $arg{name}, $arg{name_formula} );
+      $self->_process_names( $arg{title}{name}, $arg{title}{name_formula} );
 
     my $data_id = $self->_get_data_id( $name_formula, $arg{data} );
 
-    $self->{_y_axis_name}    = $name;
-    $self->{_y_axis_formula} = $name_formula;
-    $self->{_y_axis_data_id} = $data_id;
-    $self->{_y_axis_reverse} = $arg{reverse};
+    $self->{_y_axis_name}       = $name;
+    $self->{_y_axis_formula}    = $name_formula;
+    $self->{_y_axis_data_id}    = $data_id;
+    $self->{_y_axis_reverse}    = $arg{reverse};
+    $self->{_y_axis_title_font} = $arg{title}{font}
+             if (exists($arg{title}{font}) && ref($arg{title}{font}) eq "HASH");
+    $self->{_y_axis_font}       = $arg{font}
+             if (exists($arg{font}) && ref($arg{font}) eq "HASH");
 }
 
 
@@ -278,6 +303,8 @@ sub set_title {
     $self->{_title_name}    = $name;
     $self->{_title_formula} = $name_formula;
     $self->{_title_data_id} = $data_id;
+    $self->{_title_font}    = $arg{font}
+                         if (exists($arg{font}) && ref($arg{font}) eq "HASH");
 }
 
 
@@ -1086,16 +1113,18 @@ sub _write_style {
 sub _write_chart {
 
     my $self = shift;
+    my $title_font=exists($self->{_title_font})?$self->{_title_font}:undef;
 
     $self->{_writer}->startTag( 'c:chart' );
 
     # Write the chart title elements.
     my $title;
     if ( $title = $self->{_title_formula} ) {
-        $self->_write_title_formula( $title, $self->{_title_data_id} );
+        $self->_write_title( $title, $self->{_title_data_id}, undef,
+                             $title_font );
     }
     elsif ( $title = $self->{_title_name} ) {
-        $self->_write_title_rich( $title );
+        $self->_write_title( $title, undef, undef, $title_font );
     }
 
     # Write the c:plotArea element.
@@ -1304,7 +1333,7 @@ sub _write_series_name {
 
     my $name;
     if ( $name = $series->{_name_formula} ) {
-        $self->_write_tx_formula( $name, $series->{_name_id} );
+        $self->_write_tx( $name, $series->{_name_id} );
     }
     elsif ( $name = $series->{_name} ) {
         $self->_write_tx_value( $name );
@@ -1507,6 +1536,9 @@ sub _write_cat_axis {
     my $horiz     = $self->{_horiz_cat_axis};
     my $x_reverse = $self->{_x_axis_reverse};
     my $y_reverse = $self->{_y_axis_reverse};
+    my $title_font= exists($self->{_x_axis_title_font})?
+                    $self->{_x_axis_title_font}:undef;
+    my $font      = exists($self->{_x_axis_font})?$self->{_x_axis_font}:undef;
 
     $self->{_writer}->startTag( 'c:catAx' );
 
@@ -1521,10 +1553,11 @@ sub _write_cat_axis {
     # Write the axis title elements.
     my $title;
     if ( $title = $self->{_x_axis_formula} ) {
-        $self->_write_title_formula( $title, $self->{_x_axis_data_id}, $horiz );
+        $self->_write_title( $title, $self->{_x_axis_data_id}, $horiz,
+                             $title_font );
     }
     elsif ( $title = $self->{_x_axis_name} ) {
-        $self->_write_title_rich( $title, $horiz );
+        $self->_write_title( $title, undef, $horiz, $title_font );
     }
 
     # Write the c:numFmt element.
@@ -1548,6 +1581,9 @@ sub _write_cat_axis {
     # Write the c:labelOffset element.
     $self->_write_label_offset( 100 );
 
+    # Write the c:txPr element.
+    $self->_write_tx_pr( undef, $font );
+
     $self->{_writer}->endTag( 'c:catAx' );
 }
 
@@ -1568,6 +1604,9 @@ sub _write_val_axis {
     my $horiz                = $self->{_horiz_val_axis};
     my $x_reverse            = $self->{_x_axis_reverse};
     my $y_reverse            = $self->{_y_axis_reverse};
+    my $title_font= exists($self->{_y_axis_title_font})?
+                    $self->{_y_axis_title_font}:undef;
+    my $font      = exists($self->{_y_axis_font})?$self->{_y_axis_font}:undef;
 
     $self->{_writer}->startTag( 'c:valAx' );
 
@@ -1585,10 +1624,11 @@ sub _write_val_axis {
     # Write the axis title elements.
     my $title;
     if ( $title = $self->{_y_axis_formula} ) {
-        $self->_write_title_formula( $title, $self->{_y_axis_data_id}, $horiz );
+        $self->_write_title( $title, $self->{_y_axis_data_id}, $horiz,
+                             $title_font );
     }
     elsif ( $title = $self->{_y_axis_name} ) {
-        $self->_write_title_rich( $title, $horiz );
+        $self->_write_title( $title, undef, $horiz, $title_font );
     }
 
     # Write the c:numberFormat element.
@@ -1605,6 +1645,9 @@ sub _write_val_axis {
 
     # Write the c:crossBetween element.
     $self->_write_cross_between();
+
+    # Write the c:txPr element.
+    $self->_write_tx_pr( undef, $font );
 
     $self->{_writer}->endTag( 'c:valAx' );
 }
@@ -1642,10 +1685,10 @@ sub _write_cat_val_axis {
     # Write the axis title elements.
     my $title;
     if ( $title = $self->{_x_axis_formula} ) {
-        $self->_write_title_formula( $title, $self->{_y_axis_data_id}, $horiz );
+        $self->_write_title( $title, $self->{_y_axis_data_id}, $horiz );
     }
     elsif ( $title = $self->{_x_axis_name} ) {
-        $self->_write_title_rich( $title, $horiz );
+        $self->_write_title( $title, $horiz );
     }
 
     # Write the c:numberFormat element.
@@ -1679,6 +1722,9 @@ sub _write_date_axis {
     my $position = shift // $self->{_cat_axis_position};
     my $x_reverse = $self->{_x_axis_reverse};
     my $y_reverse = $self->{_y_axis_reverse};
+    my $title_font= exists($self->{_x_axis_title_font})?
+                    $self->{_x_axis_title_font}:undef;
+    my $font      = exists($self->{_x_axis_font})?$self->{_x_axis_font}:undef;
 
     $self->{_writer}->startTag( 'c:dateAx' );
 
@@ -1693,10 +1739,11 @@ sub _write_date_axis {
     # Write the axis title elements.
     my $title;
     if ( $title = $self->{_x_axis_formula} ) {
-        $self->_write_title_formula( $title, $self->{_x_axis_data_id} );
+        $self->_write_title( $title, $self->{_x_axis_data_id}, undef,
+                             $title_font );
     }
     elsif ( $title = $self->{_x_axis_name} ) {
-        $self->_write_title_rich( $title );
+        $self->_write_title( $title, undef, undef, $title_font );
     }
 
     # Write the c:numFmt element.
@@ -2178,51 +2225,28 @@ sub _write_page_setup {
 
 ##############################################################################
 #
-# _write_title_rich()
+# _write_title()
 #
-# Write the <c:title> element for a rich string.
+# Write the <c:title> element.
 #
-sub _write_title_rich {
-
-    my $self  = shift;
-    my $title = shift;
-    my $horiz = shift;
-
-    $self->{_writer}->startTag( 'c:title' );
-
-    # Write the c:tx element.
-    $self->_write_tx_rich( $title, $horiz );
-
-    # Write the c:layout element.
-    $self->_write_layout();
-
-    $self->{_writer}->endTag( 'c:title' );
-}
-
-
-##############################################################################
-#
-# _write_title_formula()
-#
-# Write the <c:title> element for a rich string.
-#
-sub _write_title_formula {
+sub _write_title {
 
     my $self    = shift;
     my $title   = shift;
     my $data_id = shift;
     my $horiz   = shift;
+    my $font    = shift;
 
     $self->{_writer}->startTag( 'c:title' );
 
     # Write the c:tx element.
-    $self->_write_tx_formula( $title, $data_id );
+    $self->_write_tx( $title, $data_id, $horiz, $font );
 
     # Write the c:layout element.
     $self->_write_layout();
 
     # Write the c:txPr element.
-    $self->_write_tx_pr( $horiz );
+    $self->_write_tx_pr( $horiz, $font);
 
     $self->{_writer}->endTag( 'c:title' );
 }
@@ -2230,24 +2254,36 @@ sub _write_title_formula {
 
 ##############################################################################
 #
-# _write_tx_rich()
+# _write_tx()
 #
-# Write the <c:tx> element.
+# Write the <c:tx> element for chart.
 #
-sub _write_tx_rich {
+sub _write_tx {
 
-    my $self  = shift;
-    my $title = shift;
-    my $horiz = shift;
+    my $self    = shift;
+    my $title   = shift;
+    my $data_id = shift;
+    my $horiz   = shift;
+    my $font    = shift;
 
     $self->{_writer}->startTag( 'c:tx' );
 
-    # Write the c:rich element.
-    $self->_write_rich( $title, $horiz );
+    my $data;
+    if ( defined $data_id ) {
+        $data = $self->{_formula_data}->[$data_id];
+
+        # Write the c:strRef element.
+        $self->_write_str_ref( $title, $data, 'str' );
+
+    } else {
+
+        # Write the c:rich element.
+        $self->_write_rich( $title, $horiz, $font );
+
+    }
 
     $self->{_writer}->endTag( 'c:tx' );
 }
-
 
 
 ##############################################################################
@@ -2272,32 +2308,6 @@ sub _write_tx_value {
 
 ##############################################################################
 #
-# _write_tx_formula()
-#
-# Write the <c:tx> element.
-#
-sub _write_tx_formula {
-
-    my $self    = shift;
-    my $title   = shift;
-    my $data_id = shift;
-    my $data;
-
-    if ( defined $data_id ) {
-        $data = $self->{_formula_data}->[$data_id];
-    }
-
-    $self->{_writer}->startTag( 'c:tx' );
-
-    # Write the c:strRef element.
-    $self->_write_str_ref( $title, $data, 'str' );
-
-    $self->{_writer}->endTag( 'c:tx' );
-}
-
-
-##############################################################################
-#
 # _write_rich()
 #
 # Write the <c:rich> element.
@@ -2307,6 +2317,7 @@ sub _write_rich {
     my $self  = shift;
     my $title = shift;
     my $horiz = shift;
+    my $font  = shift;
 
     $self->{_writer}->startTag( 'c:rich' );
 
@@ -2317,7 +2328,7 @@ sub _write_rich {
     $self->_write_a_lst_style();
 
     # Write the a:p element.
-    $self->_write_a_p_rich( $title );
+    $self->_write_a_p( $title, $font );
 
 
     $self->{_writer}->endTag( 'c:rich' );
@@ -2364,83 +2375,56 @@ sub _write_a_lst_style {
 
 ##############################################################################
 #
-# _write_a_p_rich()
+# _write_a_p()
 #
-# Write the <a:p> element for rich string titles.
+# Write the <a:p> element.
 #
-sub _write_a_p_rich {
-
-    my $self  = shift;
-    my $title = shift;
-
-    $self->{_writer}->startTag( 'a:p' );
-
-    # Write the a:pPr element.
-    $self->_write_a_p_pr_rich();
-
-    # Write the a:r element.
-    $self->_write_a_r( $title );
-
-    $self->{_writer}->endTag( 'a:p' );
-}
-
-
-##############################################################################
-#
-# _write_a_p_formula()
-#
-# Write the <a:p> element for formula titles.
-#
-sub _write_a_p_formula {
-
-    my $self  = shift;
-    my $title = shift;
-
-    $self->{_writer}->startTag( 'a:p' );
-
-    # Write the a:pPr element.
-    $self->_write_a_p_pr_formula();
-
-    # Write the a:endParaRPr element.
-    $self->_write_a_end_para_rpr();
-
-    $self->{_writer}->endTag( 'a:p' );
-}
-
-
-##############################################################################
-#
-# _write_a_p_pr_rich()
-#
-# Write the <a:pPr> element for rich string titles.
-#
-sub _write_a_p_pr_rich {
+sub _write_a_p {
 
     my $self = shift;
+    my $text = shift;
+    my $font = shift;
+
+    if (defined($text) || defined($font)) {
+
+        $self->{_writer}->startTag( 'a:p' );
+
+        # Write the a:pPr element.
+        $self->_write_a_p_pr( $font );
+
+        if (defined($text)) {
+            # Write the a:r element.
+            $self->_write_a_r( $text );
+        }
+
+        # Write the a:endParaRPr element.
+        $self->_write_a_end_para_rpr();
+
+        $self->{_writer}->endTag( 'a:p' );
+
+    } else {
+
+        $self->{_writer}->emptyTag( 'a:p' );
+
+    }
+}
+
+
+##############################################################################
+#
+# _write_a_p_pr()
+#
+# Write the <a:pPr> element.
+#
+sub _write_a_p_pr {
+
+    my $self = shift;
+    my $font = shift;
 
     $self->{_writer}->startTag( 'a:pPr' );
 
     # Write the a:defRPr element.
-    $self->_write_a_def_rpr();
-
-    $self->{_writer}->endTag( 'a:pPr' );
-}
-
-
-##############################################################################
-#
-# _write_a_p_pr_formula()
-#
-# Write the <a:pPr> element for formula titles.
-#
-sub _write_a_p_pr_formula {
-
-    my $self = shift;
-
-    $self->{_writer}->startTag( 'a:pPr' );
-
-    # Write the a:defRPr element.
-    $self->_write_a_def_rpr();
+    $self->_write_a_def_rpr($font);
 
     $self->{_writer}->endTag( 'a:pPr' );
 }
@@ -2455,8 +2439,102 @@ sub _write_a_p_pr_formula {
 sub _write_a_def_rpr {
 
     my $self = shift;
+    my $font = shift;
 
-    $self->{_writer}->emptyTag( 'a:defRPr' );
+    my @attributes = $self->_font_attributes($font);
+    if (exists($font->{name}) || exists($font->{color})) {
+
+      $self->{_writer}->startTag( 'a:defRPr', @attributes );
+
+      if (exists($font->{color})) {
+        # Write the a:solidFill element.
+        $self->_write_a_solid_fill($font);
+      }
+
+      if (exists($font->{name})) {
+        # Write the a:latin element.
+        $self->_write_a_latin($font->{typeface});
+
+        # Write the a:latin element.
+        $self->_write_a_cs($font->{typeface});
+      }
+
+      $self->{_writer}->endTag( 'a:defRPr');
+    } else {
+      $self->{_writer}->emptyTag( 'a:defRPr', @attributes );
+    }
+}
+
+
+##############################################################################
+#
+# _font_attributes()
+#
+# prepared font attributes from font hash.
+#
+sub _font_attributes {
+
+  my $self=shift;
+  my $font=shift;
+
+  my @attributes=();
+
+  my %map=("size"=>"sz","bold"=>"b","italic"=>"i","underline"=>"u");
+  my %underline=( "dash"=>1, "dashHeavy"=>1,"dashLong"=>1,"dashLongHeavy"=>1,
+                  "dbl"=>1,"dotDash"=>1,"dotDashHeavy"=>1,"dotDotDash"=>1,
+                  "dotted"=>1,"dottedHeavy"=>1,"heavy"=>1,"none"=>1,"sng"=>1,
+                  "wavy"=>1,"wavyDbl"=>1,"wavyHeavy"=>1,"words"=>1);
+
+  foreach my $item (keys %map) {
+    if (exists($font->{$item})) {
+      my $value=$font->{$item};
+      if ($item eq "size") {
+        $value=$value*100;
+      }
+      if ($item eq "underline") {
+        unless (exists($underline{$font->{$item}})) {
+          next;
+        }
+      }
+      push(@attributes,$map{$item},$value);
+    }
+  }
+
+  return @attributes;
+}
+
+
+##############################################################################
+#
+# _write_a_latin()
+#
+# Write the <a:latin> element.
+#
+sub _write_a_latin {
+
+    my $self = shift;
+    my $typeface = shift;
+
+    my @attributes = ( 'typeface' => $typeface );
+
+    $self->{_writer}->emptyTag( 'a:latin', @attributes );
+}
+
+
+##############################################################################
+#
+# _write_a_cs()
+#
+# Write the <a:cs> element.
+#
+sub _write_a_cs {
+
+    my $self = shift;
+    my $typeface = shift;
+
+    my @attributes = ( 'typeface' => $typeface );
+
+    $self->{_writer}->emptyTag( 'a:cs', @attributes );
 }
 
 
@@ -2542,6 +2620,9 @@ sub _write_tx_pr {
 
     my $self  = shift;
     my $horiz = shift;
+    my $font  = shift;
+
+    return unless (defined($horiz) || defined($font));
 
     $self->{_writer}->startTag( 'c:txPr' );
 
@@ -2552,7 +2633,7 @@ sub _write_tx_pr {
     $self->_write_a_lst_style();
 
     # Write the a:p element.
-    $self->_write_a_p_formula();
+    $self->_write_a_p( undef, $font );
 
     $self->{_writer}->endTag( 'c:txPr' );
 }
@@ -3404,13 +3485,26 @@ The properties that can be set are:
 
 =item * C<name>
 
-Set the name (title or caption) for the axis. The name is displayed below the X axis. The name can also be a formula such as C<=Sheet1!$A$1>. The name property is optional. The default is to have no axis name.
+Set the name (title or caption) for the axis. The name is displayed below the X axis. The name can also be a formula such as C<=Sheet1!$A$1>. The name property is optional. The default is to have no axis name. The title formating name value can also be used instead of this.
+
+=item * C<title>
+
+Set the properties of the axis title can be used in place of name above when including title font information. See the L</CHART FORMATTING> section below.
+
+   $chart->set_x_axis( title => { name=> "My Chart",
+                                  font=>{ typeface=>"Arial", size=>"24" } );
 
 =item * C<reverse>
 
 Reverse the order of the X axis categories or values.
 
     $chart->set_x_axis( reverse => 1 );
+
+=item * C<font>
+
+Set the properties axis labels such as typeface, size, ... See the L</CHART FORMATTING> section below. 
+
+    $chart->set_x_axis( font => { typeface=>"Arial", size=>"24" } );
 
 =back
 
@@ -3429,13 +3523,26 @@ The properties that can be set are:
 
 =item * C<name>
 
-Set the name (title or caption) for the axis. The name is displayed to the left of the Y axis. The name can also be a formula such as C<=Sheet1!$A$1>. The name property is optional. The default is to have no axis name.
+Set the name (title or caption) for the axis. The name is displayed to the left of the Y axis. The name can also be a formula such as C<=Sheet1!$A$1>. The name property is optional. The default is to have no axis name. The title formating name value can also be used instead of this.
+
+=item * C<title>
+
+Set the properties of the axis title can be used in place of name above when including title font information. See the L</CHART FORMATTING> section below.
+
+   $chart->set_x_axis( title => { name=> "My Chart",
+                                  font=>{ typeface=>"Arial", size=>"24" } );
 
 =item * C<reverse>
 
 Reverse the order of the Y axis categories or values.
 
     $chart->set_y_axis( reverse => 1 );
+
+=item * C<font>
+
+Set the properties axis labels such as typeface, size, ... See the L</CHART FORMATTING> section below. 
+
+    $chart->set_y_axis( font => { typeface=>"Arial", size=>"24" } );
 
 =back
 
@@ -3454,6 +3561,12 @@ The properties that can be set are:
 =item * C<name>
 
 Set the name (title) for the chart. The name is displayed above the chart. The name can also be a formula such as C<=Sheet1!$A$1>. The name property is optional. The default is to have no chart title.
+
+=item * C<font>
+
+Set the font properties of the title. See the L</CHART FORMATTING> section below. 
+
+    $chart->set_title( font => { typeface=>"Arial", size=>"24" } );
 
 =back
 
@@ -3524,6 +3637,8 @@ The following chart formatting properties can be set for any chart object that t
     marker
     trendline
     data_labels
+    title
+    font
 
 Chart formatting properties are generally set using hash refs.
 
@@ -3845,6 +3960,59 @@ The C<series_name> property turns on the I<Series Name> data label for a series.
         data_labels => { series_name => 1 },
     );
 
+=head2 title
+
+The title format is used to specify properties of title objects that appear in a chart such as axis title.
+
+The following properties can be set for title formats in a chart.
+
+    name
+    font
+
+The C<name> is the text used for the actual title.
+
+    $chart->set_x_axis( title => { name=>"Date" } );
+
+The C<font> is the font used for the title.
+
+    $chart->set_x_axis( title => { font=> { typeface => "Arial" } } );
+
+=head2 font
+
+The font format is used to specify properties of text objects that appear in a chart such as titles, labels, ....
+
+The following properties can be set for font formats in a chart.
+
+    typeface
+    color
+    size
+    bold
+    italic
+    underline
+
+The C<typeface> property is the font type face to use.
+
+   $chart->set_x_axis(font => { typeface => "Arial" });
+
+The C<color> property is the font color to use.
+
+   $chart->set_x_axis(font => { color => "red" });
+
+The C<size> property is the font size to use.
+
+   $chart->set_x_axis(font => { size => "12" });
+
+The C<bold> property turns on bold.
+
+   $chart->set_x_axis(font => { bold => 1 });
+
+The C<italic> property turns on italic.
+
+   $chart->set_x_axis(font => { italic => 1 });
+
+The C<underline> property turns on underline.
+
+   $chart->set_x_axis(font => { underline => 1 });
 
 =head2 Other formatting options
 

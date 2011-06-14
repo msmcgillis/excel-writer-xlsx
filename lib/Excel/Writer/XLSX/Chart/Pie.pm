@@ -221,7 +221,7 @@ sub _write_a_p_legend {
     $self->_write_a_p_pr_legend();
 
     # Write the a:endParaRPr element.
-    $self->_write_a_end_para_rpr();
+    $self->_write_a_end_para_rpr( 'en-US' );
 
     $self->{_writer}->endTag( 'a:p' );
 }

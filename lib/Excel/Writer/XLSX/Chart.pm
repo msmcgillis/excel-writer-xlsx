@@ -1121,7 +1121,7 @@ sub _write_chart {
     my $title;
     if ( $title = $self->{_title_formula} ) {
         $self->_write_title( $title, $self->{_title_data_id}, undef,
-                             $title_font );
+                             $title_font, 'en-US' );
     }
     elsif ( $title = $self->{_title_name} ) {
         $self->_write_title( $title, undef, undef, $title_font );
@@ -1554,7 +1554,7 @@ sub _write_cat_axis {
     my $title;
     if ( $title = $self->{_x_axis_formula} ) {
         $self->_write_title( $title, $self->{_x_axis_data_id}, $horiz,
-                             $title_font );
+                             $title_font, 'en-US' );
     }
     elsif ( $title = $self->{_x_axis_name} ) {
         $self->_write_title( $title, undef, $horiz, $title_font );
@@ -1625,7 +1625,7 @@ sub _write_val_axis {
     my $title;
     if ( $title = $self->{_y_axis_formula} ) {
         $self->_write_title( $title, $self->{_y_axis_data_id}, $horiz,
-                             $title_font );
+                             $title_font, 'en-US' );
     }
     elsif ( $title = $self->{_y_axis_name} ) {
         $self->_write_title( $title, undef, $horiz, $title_font );
@@ -1668,6 +1668,9 @@ sub _write_cat_val_axis {
     my $horiz                = $self->{_horiz_val_axis};
     my $x_reverse            = $self->{_x_axis_reverse};
     my $y_reverse            = $self->{_y_axis_reverse};
+    my $title_font= exists($self->{_x_axis_title_font})?
+                    $self->{_x_axis_title_font}:undef;
+    my $font      = exists($self->{_x_axis_font})?$self->{_x_axis_font}:undef;
 
     $self->{_writer}->startTag( 'c:valAx' );
 
@@ -1685,10 +1688,11 @@ sub _write_cat_val_axis {
     # Write the axis title elements.
     my $title;
     if ( $title = $self->{_x_axis_formula} ) {
-        $self->_write_title( $title, $self->{_y_axis_data_id}, $horiz );
+        $self->_write_title( $title, $self->{_y_axis_data_id}, $horiz,
+                             $title_font, 'en-US' );
     }
     elsif ( $title = $self->{_x_axis_name} ) {
-        $self->_write_title( $title, $horiz );
+        $self->_write_title( $title, undef, $horiz, $title_font );
     }
 
     # Write the c:numberFormat element.
@@ -1705,6 +1709,9 @@ sub _write_cat_val_axis {
 
     # Write the c:crossBetween element.
     $self->_write_cross_between();
+
+    # Write the c:txPr element.
+    $self->_write_tx_pr( undef, $font );
 
     $self->{_writer}->endTag( 'c:valAx' );
 }
@@ -1740,7 +1747,7 @@ sub _write_date_axis {
     my $title;
     if ( $title = $self->{_x_axis_formula} ) {
         $self->_write_title( $title, $self->{_x_axis_data_id}, undef,
-                             $title_font );
+                             $title_font, 'en-US' );
     }
     elsif ( $title = $self->{_x_axis_name} ) {
         $self->_write_title( $title, undef, undef, $title_font );
@@ -2236,6 +2243,7 @@ sub _write_title {
     my $data_id = shift;
     my $horiz   = shift;
     my $font    = shift;
+    my $lang    = shift;
 
     $self->{_writer}->startTag( 'c:title' );
 
@@ -2246,7 +2254,7 @@ sub _write_title {
     $self->_write_layout();
 
     # Write the c:txPr element.
-    $self->_write_tx_pr( $horiz, $font);
+    $self->_write_tx_pr( $horiz, $font, $lang);
 
     $self->{_writer}->endTag( 'c:title' );
 }
@@ -2384,8 +2392,9 @@ sub _write_a_p {
     my $self = shift;
     my $text = shift;
     my $font = shift;
+    my $lang = shift;
 
-    if (defined($text) || defined($font)) {
+    if (defined($text) || defined($font) || defined($lang)) {
 
         $self->{_writer}->startTag( 'a:p' );
 
@@ -2397,8 +2406,10 @@ sub _write_a_p {
             $self->_write_a_r( $text );
         }
 
-        # Write the a:endParaRPr element.
-        $self->_write_a_end_para_rpr();
+        if (defined($lang)) {
+            # Write the a:endParaRPr element.
+            $self->_write_a_end_para_rpr($lang);
+        }
 
         $self->{_writer}->endTag( 'a:p' );
 
@@ -2547,7 +2558,7 @@ sub _write_a_cs {
 sub _write_a_end_para_rpr {
 
     my $self = shift;
-    my $lang = 'en-US';
+    my $lang = shift;
 
     my @attributes = ( 'lang' => $lang );
 
@@ -2621,8 +2632,10 @@ sub _write_tx_pr {
     my $self  = shift;
     my $horiz = shift;
     my $font  = shift;
+    my $lang  = shift;
 
-    return unless (defined($horiz) || defined($font));
+    return unless (defined($font) || defined($lang) ||
+                   (defined($horiz) && defined($lang)));
 
     $self->{_writer}->startTag( 'c:txPr' );
 
@@ -2633,7 +2646,7 @@ sub _write_tx_pr {
     $self->_write_a_lst_style();
 
     # Write the a:p element.
-    $self->_write_a_p( undef, $font );
+    $self->_write_a_p( undef, $font, $lang );
 
     $self->{_writer}->endTag( 'c:txPr' );
 }

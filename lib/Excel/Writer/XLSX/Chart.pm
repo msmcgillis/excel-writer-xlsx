@@ -245,7 +245,17 @@ sub set_x_axis {
              if (exists($arg{title}{font}) && ref($arg{title}{font}) eq "HASH");
     $self->{_x_axis_font}       = $arg{font}
              if (exists($arg{font}) && ref($arg{font}) eq "HASH");
-
+    $self->{_x_axis_tick_label_skip} = exists($arg{ticklabelskip}) ?
+                                       $arg{ticklabelskip} : undef;
+    $self->{_x_axis_tick_mark_skip}  = exists($arg{tickmarkskip}) ?
+                                       $arg{tickmarkskip} : undef;
+    $self->{_x_axis_major_unit}      = exists($arg{majorunit})?
+                                       $arg{majorunit}:undef;
+    $self->{_x_axis_minor_unit}      = exists($arg{minorunit})?
+                                       $arg{minorunit}:undef;
+    $self->{_x_axis_rotation}        = $arg{rotation} if exists($arg{rotation});
+    $self->{_x_axis_max}             = exists($arg{max})?$arg{max}:undef;
+    $self->{_x_axis_min}             = exists($arg{min})?$arg{min}:undef;
 }
 
 
@@ -281,6 +291,13 @@ sub set_y_axis {
              if (exists($arg{title}{font}) && ref($arg{title}{font}) eq "HASH");
     $self->{_y_axis_font}       = $arg{font}
              if (exists($arg{font}) && ref($arg{font}) eq "HASH");
+    $self->{_y_axis_major_unit}      = exists($arg{majorunit})?
+                                       $arg{majorunit}:undef;
+    $self->{_y_axis_minor_unit}      = exists($arg{minorunit})?
+                                       $arg{minorunit}:undef;
+    $self->{_y_axis_rotation}        = $arg{rotation} if exists($arg{rotation});
+    $self->{_y_axis_max}             = exists($arg{max})?$arg{max}:undef;
+    $self->{_y_axis_min}             = exists($arg{min})?$arg{min}:undef;
 }
 
 
@@ -1539,13 +1556,19 @@ sub _write_cat_axis {
     my $title_font= exists($self->{_x_axis_title_font})?
                     $self->{_x_axis_title_font}:undef;
     my $font      = exists($self->{_x_axis_font})?$self->{_x_axis_font}:undef;
+    my $tick_label_skip = $self->{_x_axis_tick_label_skip};
+    my $tick_mark_skip  = $self->{_x_axis_tick_mark_skip};
+    my $rotation        = exists($self->{_x_axis_rotation})?
+                          $self->{_x_axis_rotation}:undef;
+    my $max             = $self->{_x_axis_max};
+    my $min             = $self->{_x_axis_min};
 
     $self->{_writer}->startTag( 'c:catAx' );
 
     $self->_write_axis_id( $self->{_axis_ids}->[0] );
 
     # Write the c:scaling element.
-    $self->_write_scaling( $x_reverse );
+    $self->_write_scaling( $x_reverse, $max, $min );
 
     # Write the c:axPos element.
     $self->_write_axis_pos( $position, $y_reverse );
@@ -1581,8 +1604,14 @@ sub _write_cat_axis {
     # Write the c:labelOffset element.
     $self->_write_label_offset( 100 );
 
+    # Write the c:tickLblSkip element.
+    $self->_write_tick_lbl_skip( $tick_label_skip );
+
+    # Write the c:auto element.
+    $self->_write_tick_mark_skip( $tick_mark_skip );
+
     # Write the c:txPr element.
-    $self->_write_tx_pr( undef, $font );
+    $self->_write_tx_pr( undef, $font, undef, $rotation );
 
     $self->{_writer}->endTag( 'c:catAx' );
 }
@@ -1607,13 +1636,19 @@ sub _write_val_axis {
     my $title_font= exists($self->{_y_axis_title_font})?
                     $self->{_y_axis_title_font}:undef;
     my $font      = exists($self->{_y_axis_font})?$self->{_y_axis_font}:undef;
+    my $major_unit      = $self->{_y_axis_major_unit};
+    my $minor_unit      = $self->{_y_axis_minor_unit};
+    my $rotation        = exists($self->{_y_axis_rotation})?
+                          $self->{_y_axis_rotation}:undef;
+    my $max             = $self->{_y_axis_max};
+    my $min             = $self->{_y_axis_min};
 
     $self->{_writer}->startTag( 'c:valAx' );
 
     $self->_write_axis_id( $self->{_axis_ids}->[1] );
 
     # Write the c:scaling element.
-    $self->_write_scaling( $y_reverse );
+    $self->_write_scaling( $y_reverse, $max, $min );
 
     # Write the c:axPos element.
     $self->_write_axis_pos( $position, $x_reverse );
@@ -1646,8 +1681,14 @@ sub _write_val_axis {
     # Write the c:crossBetween element.
     $self->_write_cross_between();
 
+    # Write the c:majorUnit element.
+    $self->_write_major_unit( $major_unit );
+
+    # Write the c:minorUnit element.
+    $self->_write_minor_unit( $minor_unit );
+
     # Write the c:txPr element.
-    $self->_write_tx_pr( undef, $font );
+    $self->_write_tx_pr( undef, $font, undef, $rotation );
 
     $self->{_writer}->endTag( 'c:valAx' );
 }
@@ -1671,13 +1712,19 @@ sub _write_cat_val_axis {
     my $title_font= exists($self->{_x_axis_title_font})?
                     $self->{_x_axis_title_font}:undef;
     my $font      = exists($self->{_x_axis_font})?$self->{_x_axis_font}:undef;
+    my $major_unit      = $self->{_x_axis_major_unit};
+    my $minor_unit      = $self->{_x_axis_minor_unit};
+    my $rotation        = exists($self->{_x_axis_rotation})?
+                          $self->{_x_axis_rotation}:undef;
+    my $max             = $self->{_x_axis_max};
+    my $min             = $self->{_x_axis_min};
 
     $self->{_writer}->startTag( 'c:valAx' );
 
     $self->_write_axis_id( $self->{_axis_ids}->[0] );
 
     # Write the c:scaling element.
-    $self->_write_scaling( $x_reverse );
+    $self->_write_scaling( $x_reverse, $max, $min );
 
     # Write the c:axPos element.
     $self->_write_axis_pos( $position, $y_reverse );
@@ -1710,8 +1757,14 @@ sub _write_cat_val_axis {
     # Write the c:crossBetween element.
     $self->_write_cross_between();
 
+    # Write the c:majorUnit element.
+    $self->_write_major_unit( $major_unit );
+
+    # Write the c:minorUnit element.
+    $self->_write_minor_unit( $minor_unit );
+
     # Write the c:txPr element.
-    $self->_write_tx_pr( undef, $font );
+    $self->_write_tx_pr( undef, $font, undef, $rotation );
 
     $self->{_writer}->endTag( 'c:valAx' );
 }
@@ -1732,13 +1785,19 @@ sub _write_date_axis {
     my $title_font= exists($self->{_x_axis_title_font})?
                     $self->{_x_axis_title_font}:undef;
     my $font      = exists($self->{_x_axis_font})?$self->{_x_axis_font}:undef;
+    my $major_unit      = $self->{_x_axis_major_unit};
+    my $minor_unit      = $self->{_x_axis_minor_unit};
+    my $rotation        = exists($self->{_x_axis_rotation})?
+                          $self->{_x_axis_rotation}:undef;
+    my $max             = $self->{_x_axis_max};
+    my $min             = $self->{_x_axis_min};
 
     $self->{_writer}->startTag( 'c:dateAx' );
 
     $self->_write_axis_id( $self->{_axis_ids}->[0] );
 
     # Write the c:scaling element.
-    $self->_write_scaling( $x_reverse );
+    $self->_write_scaling( $x_reverse, $max, $min );
 
     # Write the c:axPos element.
     $self->_write_axis_pos( $position, $y_reverse );
@@ -1771,6 +1830,15 @@ sub _write_date_axis {
     # Write the c:labelOffset element.
     $self->_write_label_offset( 100 );
 
+    # Write the c:majorUnit element.
+    $self->_write_major_unit( $major_unit );
+
+    # Write the c:minorUnit element.
+    $self->_write_minor_unit( $minor_unit );
+
+    # Write the c:txPr element.
+    $self->_write_tx_pr( undef, $font, undef, $rotation );
+
     $self->{_writer}->endTag( 'c:dateAx' );
 }
 
@@ -1785,11 +1853,19 @@ sub _write_scaling {
 
     my $self    = shift;
     my $reverse = shift;
+    my $max     = shift;
+    my $min     = shift;
 
     $self->{_writer}->startTag( 'c:scaling' );
 
     # Write the c:orientation element.
     $self->_write_orientation( $reverse );
+
+    # Write the c:max element.
+    $self->_write_max( $max );
+
+    # Write the c:min element.
+    $self->_write_min( $min );
 
     $self->{_writer}->endTag( 'c:scaling' );
 }
@@ -1812,6 +1888,44 @@ sub _write_orientation {
     my @attributes = ( 'val' => $val );
 
     $self->{_writer}->emptyTag( 'c:orientation', @attributes );
+}
+
+
+##############################################################################
+#
+# _write_max()
+#
+# Write the <c:max> element.
+#
+sub _write_max {
+
+    my $self = shift;
+    my $max  = shift;
+
+    return unless (defined($max));
+
+    my @attributes = ( 'val' => $max );
+
+    $self->{_writer}->emptyTag( 'c:max', @attributes );
+}
+
+
+##############################################################################
+#
+# _write_min()
+#
+# Write the <c:min> element.
+#
+sub _write_min {
+
+    my $self = shift;
+    my $min  = shift;
+
+    return unless (defined($min));
+
+    my @attributes = ( 'val' => $min );
+
+    $self->{_writer}->emptyTag( 'c:min', @attributes );
 }
 
 
@@ -1910,6 +2024,82 @@ sub _write_crosses {
     my @attributes = ( 'val' => $val );
 
     $self->{_writer}->emptyTag( 'c:crosses', @attributes );
+}
+
+
+##############################################################################
+#
+# _write_tick_lbl_skip()
+#
+# Write the <c:tickLblSkip> element.
+#
+sub _write_tick_lbl_skip {
+
+    my $self = shift;
+    my $val  = shift;
+
+    return unless (defined($val));
+
+    my @attributes = ( 'val' => $val );
+
+    $self->{_writer}->emptyTag( 'c:tickLblSkip', @attributes );
+}
+
+
+##############################################################################
+#
+# _write_tick_mark_skip()
+#
+# Write the <c:tickMarkSkip> element.
+#
+sub _write_tick_mark_skip {
+
+    my $self = shift;
+    my $val  = shift;
+
+    return unless (defined($val));
+
+    my @attributes = ( 'val' => $val );
+
+    $self->{_writer}->emptyTag( 'c:tickMarkSkip', @attributes );
+}
+
+
+##############################################################################
+#
+# _write_major_unit()
+#
+# Write the <c:majorUnit> element.
+#
+sub _write_major_unit {
+
+    my $self = shift;
+    my $val  = shift;
+
+    return unless (defined($val));
+
+    my @attributes = ( 'val' => $val );
+
+    $self->{_writer}->emptyTag( 'c:majorUnit', @attributes );
+}
+
+
+##############################################################################
+#
+# _write_minor_unit()
+#
+# Write the <c:minorUnit> element.
+#
+sub _write_minor_unit {
+
+    my $self = shift;
+    my $val  = shift;
+
+    return unless (defined($val));
+
+    my @attributes = ( 'val' => $val );
+
+    $self->{_writer}->emptyTag( 'c:minorUnit', @attributes );
 }
 
 
@@ -2351,19 +2541,39 @@ sub _write_rich {
 #
 sub _write_a_body_pr {
 
-    my $self  = shift;
-    my $horiz = shift;
-    my $rot   = -5400000;
-    my $vert  = 'horz';
+    my $self     = shift;
+    my $horiz    = shift;
+    my $rotation = shift;
+    my $rot      = $self->_get_rotation($rotation) || -5400000;
+    my $vert     = 'horz';
 
     my @attributes = (
         'rot'  => $rot,
         'vert' => $vert,
     );
 
-    @attributes = () if !$horiz;
+    @attributes = () if !($horiz || $rotation);
 
     $self->{_writer}->emptyTag( 'a:bodyPr', @attributes );
+}
+
+
+##############################################################################
+#
+# _get_rotation()
+#
+# Convert user specified rotation to internal rotation value.
+#
+sub _get_rotation {
+
+    my $self=shift;
+    my $rot=shift;
+
+    if (defined($rot)) {
+      $rot=$rot*-60000;
+    }
+
+    return $rot;
 }
 
 
@@ -2629,18 +2839,19 @@ sub _write_a_t {
 #
 sub _write_tx_pr {
 
-    my $self  = shift;
-    my $horiz = shift;
-    my $font  = shift;
-    my $lang  = shift;
+    my $self     = shift;
+    my $horiz    = shift;
+    my $font     = shift;
+    my $lang     = shift;
+    my $rotation = shift;
 
-    return unless (defined($font) || defined($lang) ||
+    return unless (defined($font) || defined($lang) || defined($rotation) ||
                    (defined($horiz) && defined($lang)));
 
     $self->{_writer}->startTag( 'c:txPr' );
 
     # Write the a:bodyPr element.
-    $self->_write_a_body_pr( $horiz );
+    $self->_write_a_body_pr( $horiz, $rotation );
 
     # Write the a:lstStyle element.
     $self->_write_a_lst_style();
@@ -3519,6 +3730,52 @@ Set the properties axis labels such as typeface, size, ... See the L</CHART FORM
 
     $chart->set_x_axis( font => { typeface=>"Arial", size=>"24" } );
 
+=item * C<ticklblskip>
+
+When the x axis is using string values this can be set to indicate if you want all string labels to be shown:
+
+    $chart->set_x_axis( ticklblskip => 1 );
+
+or if you want labels to skip some number of labels indicated by a value larger than 1. Value of 2 skips every other label, value of 3 shows one label then skips 2, ....
+
+=item * C<tickmarkskip>
+
+When the x axis is using string values this can be set to indicate if you want all tick marks on the axis to be shown:
+
+    $chart->set_x_axis( tickmarkskip => 1 );
+
+or if you want the marks to skip some number of marks indicated by a value larger than 1. Value of 2 skips every other mark, value of 3 shows one mark then skips 2, ....
+
+=item * C<majorunit>
+
+When the x axis is a date or numeric value this can be set to indicate the major division between values.
+
+    $chart->set_x_axis( majorunit => 10 );
+
+=item * C<minorunit>
+
+When the x axis is a date or numeric value this can be set to indicate the minor division between values.
+
+    $chart->set_x_axis( minorunit => 1 );
+
+=item * C<rotation>
+
+Rotate the label value specified degrees.
+
+    $chart->set_x_axis( rotation => 45 );
+
+=item * C<max>
+
+Set the max value in chart.
+
+    $chart->set_x_axis( max => 100 );
+
+=item * C<min>
+
+Set the min value in chart.
+
+    $chart->set_x_axis( min => -100 );
+
 =back
 
 Additional axis properties such as range, divisions and ticks will be made available in later releases.
@@ -3556,6 +3813,36 @@ Reverse the order of the Y axis categories or values.
 Set the properties axis labels such as typeface, size, ... See the L</CHART FORMATTING> section below. 
 
     $chart->set_y_axis( font => { typeface=>"Arial", size=>"24" } );
+
+=item * C<majorunit>
+
+Set to indicate the major division between values.
+
+    $chart->set_x_axis( majorunit => 10 );
+
+=item * C<minorunit>
+
+Set to indicate the minor division between values.
+
+    $chart->set_x_axis( minorunit => 1 );
+
+=item * C<rotation>
+
+Rotate the label value specified degrees.
+
+    $chart->set_x_axis( rotation => 45 );
+
+=item * C<max>
+
+Set the max value in chart.
+
+    $chart->set_x_axis( max => 100 );
+
+=item * C<min>
+
+Set the min value in chart.
+
+    $chart->set_x_axis( min => -100 );
 
 =back
 

@@ -67,19 +67,23 @@ sub _write_bar_chart {
 
     my $self = shift;
 
-    $self->{_writer}->startTag( 'c:barChart' );
+    for (my $plane=0;$plane<=$#{$self->{_series}};$plane++) {
 
-    # Write the c:barDir element.
-    $self->_write_bar_dir();
+         $self->{_writer}->startTag( 'c:barChart' );
 
-    # Write the c:grouping element.
-    $self->_write_grouping( 'clustered' );
+         # Write the c:barDir element.
+         $self->_write_bar_dir();
 
-    # Write the series elements.
-    $self->_write_series();
+         # Write the c:grouping element.
+         $self->_write_grouping( 'clustered' );
+
+         # Write the series elements.
+         $self->_write_series($plane);
 
 
-    $self->{_writer}->endTag( 'c:barChart' );
+         $self->{_writer}->endTag( 'c:barChart' );
+
+    }
 }
 
 

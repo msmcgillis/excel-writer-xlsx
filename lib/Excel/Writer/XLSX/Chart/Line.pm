@@ -67,16 +67,19 @@ sub _write_line_chart {
 
     my $self = shift;
 
-    $self->{_writer}->startTag( 'c:lineChart' );
+    for (my $plane=0;$plane<=$#{$self->{_series}};$plane++) {
 
-    # Write the c:grouping element.
-    $self->_write_grouping( 'standard' );
+        $self->{_writer}->startTag( 'c:lineChart' );
 
-    # Write the series elements.
-    $self->_write_series();
+        # Write the c:grouping element.
+        $self->_write_grouping( 'standard' );
 
+        # Write the series elements.
+        $self->_write_series( $plane );
 
-    $self->{_writer}->endTag( 'c:lineChart' );
+        $self->{_writer}->endTag( 'c:lineChart' );
+
+    }
 }
 
 

@@ -68,18 +68,22 @@ sub _write_scatter_chart {
 
     my $self = shift;
 
-    # Add default formatting to the series data.
-    $self->_modify_series_formatting();
+    for (my $plane=0;$plane<=$#{$self->{_series}};$plane++) {
 
-    $self->{_writer}->startTag( 'c:scatterChart' );
+        # Add default formatting to the series data.
+        $self->_modify_series_formatting($plane);
 
-    # Write the c:scatterStyle element.
-    $self->_write_scatter_style();
+        $self->{_writer}->startTag( 'c:scatterChart' );
 
-    # Write the series elements.
-    $self->_write_series();
+        # Write the c:scatterStyle element.
+        $self->_write_scatter_style();
 
-    $self->{_writer}->endTag( 'c:scatterChart' );
+        # Write the series elements.
+        $self->_write_series($plane);
+
+        $self->{_writer}->endTag( 'c:scatterChart' );
+
+    }
 }
 
 
@@ -94,16 +98,15 @@ sub _write_scatter_chart {
 sub _write_ser {
 
     my $self       = shift;
-    my $index      = shift;
     my $series     = shift;
 
     $self->{_writer}->startTag( 'c:ser' );
 
     # Write the c:idx element.
-    $self->_write_idx( $index );
+    $self->_write_idx( $series->{_index} );
 
     # Write the c:order element.
-    $self->_write_order( $index );
+    $self->_write_order( $series->{_index} );
 
     # Write the series name.
     $self->_write_series_name( $series );
@@ -151,12 +154,17 @@ sub _write_plot_area {
     # Write the subclass chart type element.
     $self->_write_chart_type();
 
-    # Write the c:catAx element.
-    $self->_write_cat_val_axis( 'b', 1 );
+    for (my $plane=0;$plane<=$#{$self->{_series}};$plane++) {
 
-    # Write the c:catAx element.
-    $self->{_horiz_val_axis} = 1;
-    $self->_write_val_axis( 'l' );
+        # Write the c:catAx element.
+        $self->_write_cat_val_axis( $plane , 'b', 1);
+
+        # Write the c:catAx element.
+        $self->{_y_axis}[$plane]{_position}='l';
+        $self->{_horiz_val_axis} = 1;
+        $self->_write_val_axis( $plane );
+
+    }
 
     $self->{_writer}->endTag( 'c:plotArea' );
 }
@@ -257,10 +265,11 @@ sub _write_scatter_style {
 #
 sub _modify_series_formatting {
 
-    my $self = shift;
+    my $self  = shift;
+    my $plane = shift;
 
     my $index = 0;
-    for my $series ( @{ $self->{_series} } ) {
+    for my $series ( @{ $self->{_series}[$plane] } ) {
         if ( !$series->{_line}->{_defined} ) {
             $series->{_line} = {
                 width    => 2.25,

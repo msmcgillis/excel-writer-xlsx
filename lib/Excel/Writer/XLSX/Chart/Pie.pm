@@ -67,18 +67,22 @@ sub _write_pie_chart {
 
     my $self = shift;
 
-    $self->{_writer}->startTag( 'c:pieChart' );
+    for (my $plane=0;$plane<=$#{$self->{_series}};$plane++) {
 
-    # Write the c:varyColors element.
-    $self->_write_vary_colors();
+        $self->{_writer}->startTag( 'c:pieChart' );
 
-    # Write the series elements.
-    $self->_write_series();
+        # Write the c:varyColors element.
+        $self->_write_vary_colors();
 
-   # Write the c:firstSliceAng element.
-    $self->_write_first_slice_ang();
+        # Write the series elements.
+        $self->_write_series($plane);
 
-    $self->{_writer}->endTag( 'c:pieChart' );
+        # Write the c:firstSliceAng element.
+        $self->_write_first_slice_ang();
+
+        $self->{_writer}->endTag( 'c:pieChart' );
+
+    }
 }
 
 
@@ -118,12 +122,12 @@ sub _write_plot_area {
 #
 sub _write_series {
 
-    my $self = shift;
+    my $self  = shift;
+    my $plane = shift;
 
     # Write each series with subelements.
-    my $index = 0;
-    for my $series ( @{ $self->{_series} } ) {
-        $self->_write_ser( $index++, $series );
+    for my $series ( @{ $self->{_series}[$plane] } ) {
+        $self->_write_ser( $series );
     }
 }
 

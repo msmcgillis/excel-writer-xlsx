@@ -65,15 +65,19 @@ sub _write_stock_chart {
 
     my $self = shift;
 
-    # Add default formatting to the series data.
-    $self->_modify_series_formatting();
+    for (my $plane=0;$plane<=$#{$self->{_series}};$plane++) {
 
-    $self->{_writer}->startTag( 'c:stockChart' );
+        # Add default formatting to the series data.
+        $self->_modify_series_formatting($plane);
 
-    # Write the series elements.
-    $self->_write_series();
+        $self->{_writer}->startTag( 'c:stockChart' );
 
-    $self->{_writer}->endTag( 'c:stockChart' );
+        # Write the series elements.
+        $self->_write_series($plane);
+
+        $self->{_writer}->endTag( 'c:stockChart' );
+
+    }
 }
 
 
@@ -88,11 +92,11 @@ sub _write_stock_chart {
 sub _write_series {
 
     my $self = shift;
+    my $plane = shift;
 
     # Write each series with subelements.
-    my $index = 0;
-    for my $series ( @{ $self->{_series} } ) {
-        $self->_write_ser( $index++, $series );
+    for my $series ( @{ $self->{_series}[$plane] } ) {
+        $self->_write_ser( $series );
     }
 
     # Write the c:hiLowLines element.
@@ -102,12 +106,12 @@ sub _write_series {
     $self->_write_marker_value();
 
     # Generate the axis ids.
-    $self->_add_axis_id();
-    $self->_add_axis_id();
+    $self->_add_axis_id($plane);
+    $self->_add_axis_id($plane);
 
     # Write the c:axId element.
-    $self->_write_axis_id( $self->{_axis_ids}->[0] );
-    $self->_write_axis_id( $self->{_axis_ids}->[1] );
+    $self->_write_axis_id( $self->{_axis_ids}[$plane][0] );
+    $self->_write_axis_id( $self->{_axis_ids}[$plane][1] );
 }
 
 
@@ -129,11 +133,15 @@ sub _write_plot_area {
     # Write the subclass chart type element.
     $self->_write_chart_type();
 
-    # Write the c:dateAx element.
-    $self->_write_date_axis();
+    for (my $plane=0;$plane<=$#{$self->{_series}};$plane++) {
 
-    # Write the c:catAx element.
-    $self->_write_val_axis();
+        # Write the c:dateAx element.
+        $self->_write_date_axis($plane);
+
+        # Write the c:catAx element.
+        $self->_write_val_axis($plane);
+
+    }
 
     $self->{_writer}->endTag( 'c:plotArea' );
 }
@@ -147,10 +155,11 @@ sub _write_plot_area {
 #
 sub _modify_series_formatting {
 
-    my $self = shift;
+    my $self  = shift;
+    my $plane = shift;
 
     my $index = 0;
-    for my $series ( @{ $self->{_series} } ) {
+    for my $series ( @{ $self->{_series}[$plane] } ) {
         if ( $index % 4 != 3 ) {
             if ( !$series->{_line}->{_defined} ) {
                 $series->{_line} = {

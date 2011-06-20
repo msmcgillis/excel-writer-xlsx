@@ -30,6 +30,7 @@ my $chart;
 #
 $caption  = " \tChart: add_series()";
 $expected = {
+    _index        => 0,
     _categories   => undef,
     _values       => '=Sheet1!$A$1:$A$5',
     _name         => undef,
@@ -41,14 +42,14 @@ $expected = {
     _fill         => { _defined => 0 },
     _marker       => undef,
     _trendline    => undef,
-    _labels       => undef,
+    _labels       => undef
 };
 
 $chart = _new_object( \$got, 'Excel::Writer::XLSX::Chart' );
 
 $chart->add_series( values => '=Sheet1!$A$1:$A$5' );
 
-$got = $chart->{_series}->[0];
+$got = $chart->{_series}[0][0];
 
 _is_deep_diff( $got, $expected, $caption );
 
@@ -60,6 +61,7 @@ _is_deep_diff( $got, $expected, $caption );
 $caption  = " \tChart: add_series()";
 $expected = [
     {
+        _index        => 0,
         _categories   => '=Sheet1!$A$1:$A$5',
         _values       => '=Sheet1!$B$1:$B$5',
         _name         => 'Text',
@@ -71,7 +73,7 @@ $expected = [
         _fill         => { _defined => 0 },
         _marker       => undef,
         _trendline    => undef,
-        _labels       => undef,
+        _labels       => undef
     }
 ];
 
@@ -83,7 +85,7 @@ $chart->add_series(
     name       => 'Text'
 );
 
-$got = $chart->{_series};
+$got = $chart->{_series}[0];
 
 _is_deep_diff( $got, $expected, $caption );
 
@@ -95,6 +97,7 @@ _is_deep_diff( $got, $expected, $caption );
 $caption  = " \tChart: add_series()";
 $expected = [
     {
+        _index        => 0,
         _categories   => undef,
         _values       => '=Sheet1!$A$1:$A$5',
         _name         => undef,
@@ -114,7 +117,7 @@ $chart = _new_object( \$got, 'Excel::Writer::XLSX::Chart' );
 
 $chart->add_series( values => [ 'Sheet1', 0, 4, 0, 0 ] );
 
-$got = $chart->{_series};
+$got = $chart->{_series}[0];
 
 _is_deep_diff( $got, $expected, $caption );
 
@@ -125,6 +128,7 @@ _is_deep_diff( $got, $expected, $caption );
 #
 $caption  = " \tChart: add_series()";
 $expected = {
+    _index        => 0,
     _categories   => '=Sheet1!$A$1:$A$5',
     _values       => '=Sheet1!$B$1:$B$5',
     _name         => 'Text',
@@ -147,7 +151,7 @@ $chart->add_series(
     name       => 'Text'
 );
 
-$got = $chart->{_series}->[0];
+$got = $chart->{_series}[0][0];
 
 _is_deep_diff( $got, $expected, $caption );
 

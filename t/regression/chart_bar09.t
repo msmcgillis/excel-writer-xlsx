@@ -43,7 +43,7 @@ my $chart =
   $workbook->add_chart( type => 'bar', subtype => 'stacked', embedded => 1 );
 
 # For testing, copy the randomly generated axis ids in the target xlsx file.
-$chart->{_axis_ids} = [ 40274560, 40295040 ];
+$chart->{_axis_ids}[0] = [ 40274560, 40295040 ];
 
 my $data = [
     [ 1, 2, 3, 4,  5 ],

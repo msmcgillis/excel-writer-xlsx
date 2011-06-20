@@ -37,7 +37,6 @@ sub new {
 
     $self->{_subtype}           = $self->{_subtype} // 'clustered';
     $self->{_cat_axis_position} = 'l';
-    $self->{_val_axis_position} = 'b';
     $self->{_horiz_val_axis}    = 0;
     $self->{_horiz_cat_axis}    = 1;
 
@@ -57,22 +56,6 @@ sub _write_chart_type {
 
     my $self = shift;
 
-    # Reverse meaning of X and Y axis for Bar charts.
-    my $name         = $self->{_y_axis_name};
-    my $name_formula = $self->{_y_axis_formula};
-    my $data_id      = $self->{_y_axis_data_id};
-    my $reverse      = $self->{_y_axis_reverse};
-
-    $self->{_y_axis_name}    = $self->{_x_axis_name};
-    $self->{_y_axis_formula} = $self->{_x_axis_formula};
-    $self->{_y_axis_data_id} = $self->{_x_axis_data_id};
-    $self->{_y_axis_reverse} = $self->{_x_axis_reverse};
-
-    $self->{_x_axis_name}    = $name;
-    $self->{_x_axis_formula} = $name_formula;
-    $self->{_x_axis_data_id} = $data_id;
-    $self->{_x_axis_reverse} = $reverse;
-
     # Write the c:barChart element.
     $self->_write_bar_chart();
 }
@@ -91,18 +74,38 @@ sub _write_bar_chart {
 
     $subtype = 'percentStacked' if $subtype eq 'percent_stacked';
 
-    $self->{_writer}->startTag( 'c:barChart' );
+    for (my $plane=0;$plane<=$#{$self->{_series}};$plane++) {
+        # Reverse meaning of X and Y axis for Bar charts.
+        my $name         = $self->{_y_axis}[$plane]{_name};
+        my $name_formula = $self->{_y_axis}[$plane]{_formula};
+        my $data_id      = $self->{_y_axis}[$plane]{_data_id};
+        my $reverse      = $self->{_y_axis}[$plane]{_reverse};
+    
+        $self->{_y_axis}[$plane]{_name}    = $self->{_x_axis}[$plane]{_name};
+        $self->{_y_axis}[$plane]{_formula} = $self->{_x_axis}[$plane]{_formula};
+        $self->{_y_axis}[$plane]{_data_id} = $self->{_x_axis}[$plane]{_data_id};
+        $self->{_y_axis}[$plane]{_reverse} = $self->{_x_axis}[$plane]{_reverse};
+        $self->{_y_axis}[$plane]{_position}= 'b';
+    
+        $self->{_x_axis}[$plane]{_name}    = $name;
+        $self->{_x_axis}[$plane]{_formula} = $name_formula;
+        $self->{_x_axis}[$plane]{_data_id} = $data_id;
+        $self->{_x_axis}[$plane]{_reverse} = $reverse;
 
-    # Write the c:barDir element.
-    $self->_write_bar_dir();
+        $self->{_writer}->startTag( 'c:barChart' );
 
-    # Write the c:grouping element.
-    $self->_write_grouping( $subtype );
+        # Write the c:barDir element.
+        $self->_write_bar_dir();
 
-    # Write the series elements.
-    $self->_write_series();
+        # Write the c:grouping element.
+        $self->_write_grouping( $subtype );
 
-    $self->{_writer}->endTag( 'c:barChart' );
+        # Write the series elements.
+        $self->_write_series($plane);
+
+        $self->{_writer}->endTag( 'c:barChart' );
+
+    }
 }
 
 
@@ -134,11 +137,11 @@ sub _write_bar_dir {
 sub _write_series {
 
     my $self = shift;
+    my $plane = shift;
 
     # Write each series with subelements.
-    my $index = 0;
-    for my $series ( @{ $self->{_series} } ) {
-        $self->_write_ser( $index++, $series );
+    for my $series ( @{ $self->{_series}[$plane] } ) {
+        $self->_write_ser( $series );
     }
 
     # Write the c:marker element.
@@ -148,12 +151,12 @@ sub _write_series {
     $self->_write_overlap() if $self->{_subtype} =~ /stacked/;
 
     # Generate the axis ids.
-    $self->_add_axis_id();
-    $self->_add_axis_id();
+    $self->_add_axis_id($plane);
+    $self->_add_axis_id($plane);
 
     # Write the c:axId element.
-    $self->_write_axis_id( $self->{_axis_ids}->[0] );
-    $self->_write_axis_id( $self->{_axis_ids}->[1] );
+    $self->_write_axis_id( $self->{_axis_ids}[$plane][0] );
+    $self->_write_axis_id( $self->{_axis_ids}[$plane][1] );
 }
 
 

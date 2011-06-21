@@ -160,34 +160,6 @@ sub _write_series {
 }
 
 
-##############################################################################
-#
-# _write_num_fmt()
-#
-# Over-ridden to add % format. TODO. This will be refactored back up to the
-# SUPER class later.
-#
-# Write the <c:numFmt> element.
-#
-sub _write_number_format {
-
-    my $self          = shift;
-    my $format_code   = shift // 'General';
-    my $source_linked = 1;
-
-    if ($self->{_subtype} eq 'percent_stacked') {
-        $format_code = '0%';
-    }
-
-    my @attributes = (
-        'formatCode'   => $format_code,
-        'sourceLinked' => $source_linked,
-    );
-
-    $self->{_writer}->emptyTag( 'c:numFmt', @attributes );
-}
-
-
 1;
 
 

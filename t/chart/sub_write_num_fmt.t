@@ -34,7 +34,7 @@ $expected = '<c:numFmt formatCode="General" sourceLinked="1" />';
 $chart = _new_object( \$got, 'Excel::Writer::XLSX::Chart' );
 $chart->{_has_category} = 1;
 
-$chart->_write_num_fmt();
+$chart->_write_num_fmt("General");
 
 is( $got, $expected, $caption );
 

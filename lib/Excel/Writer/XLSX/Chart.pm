@@ -282,7 +282,9 @@ sub set_x_axis {
         _major_unit      => exists($arg{majorunit})?$arg{majorunit}:undef,
         _minor_unit      => exists($arg{minorunit})?$arg{minorunit}:undef,
         _max             => exists($arg{max})?$arg{max}:undef,
-        _min             => exists($arg{min})?$arg{min}:undef
+        _min             => exists($arg{min})?$arg{min}:undef,
+        _number_format   => exists($arg{numberformat})?$arg{numberformat}:undef,
+        _source_linked   => exists($arg{numberformat})?0:1
     );
     $result{_title_font} = $arg{title}{font}
              if (exists($arg{title}{font}) && ref($arg{title}{font}) eq "HASH");
@@ -349,19 +351,23 @@ sub _set_y_axis {
 
     # Add the user supplied data to the internal structures.
     my $update=$self->{_y_axis}[$plane];
-    $update->{_name}       = $name;
-    $update->{_formula}    = $name_formula;
-    $update->{_data_id}    = $data_id;
-    $update->{_reverse}    = $arg{reverse};
-    $update->{_mojor_unit} = exists($arg{majorunit})?$arg{majorunit}:undef;
-    $update->{_minor_unit} = exists($arg{minorunit})?$arg{minorunit}:undef;
-    $update->{_max}        = exists($arg{max})?$arg{max}:undef;
-    $update->{_min}        = exists($arg{min})?$arg{min}:undef;
-    $update->{_title_font} = $arg{title}{font}
+    $update->{_name}          = $name;
+    $update->{_formula}       = $name_formula;
+    $update->{_data_id}       = $data_id;
+    $update->{_reverse}       = $arg{reverse};
+    $update->{_mojor_unit}    = exists($arg{majorunit})?$arg{majorunit}:undef;
+    $update->{_minor_unit}    = exists($arg{minorunit})?$arg{minorunit}:undef;
+    $update->{_max}           = exists($arg{max})?$arg{max}:undef;
+    $update->{_min}           = exists($arg{min})?$arg{min}:undef;
+    $update->{_number_format} = exists($arg{numberformat})? 
+                                $arg{numberformat}:undef;
+    $update->{_source_linked} = exists($arg{numberformat})? 
+                                0:1;
+    $update->{_title_font}    = $arg{title}{font}
              if (exists($arg{title}{font}) && ref($arg{title}{font}) eq "HASH");
-    $update->{_font}       = $arg{font}
+    $update->{_font}          = $arg{font}
              if (exists($arg{font}) && ref($arg{font}) eq "HASH");
-    $update->{_rotation}   = $arg{rotation} if exists($arg{rotation});
+    $update->{_rotation}      = $arg{rotation} if exists($arg{rotation});
 
 }
 
@@ -1636,6 +1642,8 @@ sub _write_cat_axis {
     my $max             = $self->{_x_axis}[$plane]{_max};
     my $min             = $self->{_x_axis}[$plane]{_min};
     my $delete          = $self->{_x_axis}[$plane]{_delete};
+    my $numfmt          = $self->{_x_axis}[$plane]{_number_format};
+    my $srclnk          = $self->{_x_axis}[$plane]{_source_linked};
 
     $self->{_writer}->startTag( 'c:catAx' );
 
@@ -1661,7 +1669,10 @@ sub _write_cat_axis {
     }
 
     # Write the c:numFmt element.
-    $self->_write_num_fmt();
+    if ($self->{_has_category} || defined($numfmt)) {
+        $numfmt='General' unless defined($numfmt);
+        $self->_write_num_fmt($numfmt,$srclnk);
+    } 
 
     # Write the c:tickLblPos element.
     $self->_write_tick_label_pos( 'nextTo' );
@@ -1722,6 +1733,8 @@ sub _write_val_axis {
     my $max             = $self->{_y_axis}[$plane]{_max};
     my $min             = $self->{_y_axis}[$plane]{_min};
     my $crosses         = $self->{_y_axis}[$plane]{_crosses};
+    my $numfmt          = $self->{_y_axis}[$plane]{_number_format};
+    my $srclnk          = $self->{_y_axis}[$plane]{_source_linked};
 
     $self->{_writer}->startTag( 'c:valAx' );
 
@@ -1747,7 +1760,15 @@ sub _write_val_axis {
     }
 
     # Write the c:numberFormat element.
-    $self->_write_number_format();
+    unless (defined($numfmt)) {
+      if (defined($self->{_subtype}) &&
+          $self->{_subtype} eq 'percent_stacked') {
+        $numfmt = '0%';
+      } else {
+        $numfmt='General';
+      }
+    }
+    $self->_write_num_fmt($numfmt,$srclnk);
 
     # Write the c:tickLblPos element.
     $self->_write_tick_label_pos( 'nextTo' );
@@ -1800,6 +1821,8 @@ sub _write_cat_val_axis {
                           $self->{_x_axis}[$plane]{_rotation}:undef;
     my $max             = $self->{_x_axis}[$plane]{_max};
     my $min             = $self->{_x_axis}[$plane]{_min};
+    my $numfmt          = $self->{_x_axis}[$plane]{_number_format};
+    my $srclnk          = $self->{_x_axis}[$plane]{_source_linked};
 
     $self->{_writer}->startTag( 'c:valAx' );
 
@@ -1825,7 +1848,8 @@ sub _write_cat_val_axis {
     }
 
     # Write the c:numberFormat element.
-    $self->_write_number_format();
+    $numfmt='General' unless defined($numfmt);
+    $self->_write_num_fmt($numfmt,$srclnk);
 
     # Write the c:tickLblPos element.
     $self->_write_tick_label_pos( 'nextTo' );
@@ -1875,6 +1899,8 @@ sub _write_date_axis {
                           $self->{_x_axis}[$plane]{_rotation}:undef;
     my $max             = $self->{_x_axis}[$plane]{_max};
     my $min             = $self->{_x_axis}[$plane]{_min};
+    my $numfmt          = $self->{_x_axis}[$plane]{_number_format};
+    my $srclnk          = $self->{_x_axis}[$plane]{_source_linked};
 
     $self->{_writer}->startTag( 'c:dateAx' );
 
@@ -1897,7 +1923,8 @@ sub _write_date_axis {
     }
 
     # Write the c:numFmt element.
-    $self->_write_num_fmt( 'dd/mm/yyyy' );
+    $numfmt='dd/mm/yyyy' unless defined($numfmt);
+    $self->_write_num_fmt($numfmt,$srclnk);
 
     # Write the c:tickLblPos element.
     $self->_write_tick_label_pos( 'nextTo' );
@@ -2045,11 +2072,10 @@ sub _write_axis_pos {
 sub _write_num_fmt {
 
     my $self          = shift;
-    my $format_code   = shift // 'General';
-    my $source_linked = 1;
+    my $format_code   = shift;
+    my $source_linked = shift // 1;
 
-    # These elements are only required for charts with categories.
-    return unless $self->{_has_category};
+    return unless $format_code;
 
     my @attributes = (
         'formatCode'   => $format_code,
@@ -2251,28 +2277,6 @@ sub _write_major_gridlines {
     $self->{_writer}->emptyTag( 'c:majorGridlines' );
 }
 
-
-##############################################################################
-#
-# _write_number_format()
-#
-# Write the <c:numberFormat> element.
-#
-# TODO. Merge/replace with _write_num_fmt().
-#
-sub _write_number_format {
-
-    my $self          = shift;
-    my $format_code   = 'General';
-    my $source_linked = 1;
-
-    my @attributes = (
-        'formatCode'   => $format_code,
-        'sourceLinked' => $source_linked,
-    );
-
-    $self->{_writer}->emptyTag( 'c:numFmt', @attributes );
-}
 
 ##############################################################################
 #
@@ -3867,6 +3871,12 @@ Set the min value in chart.
 
     $chart->set_x_axis( min => -100 );
 
+=item * C<numberformat>
+
+Set the axis unit numberformat.
+
+    $chart->set_x_axis( numberformat => "0.00" );
+
 =back
 
 Additional axis properties such as range, divisions and ticks will be made available in later releases.
@@ -3934,6 +3944,12 @@ Set the max value in chart.
 Set the min value in chart.
 
     $chart->set_x_axis( min => -100 );
+
+=item * C<numberformat>
+
+Set the axis unit numberformat.
+
+    $chart->set_x_axis( numberformat => "0.00" );
 
 =back
 

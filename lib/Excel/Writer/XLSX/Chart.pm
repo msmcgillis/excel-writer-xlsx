@@ -80,6 +80,7 @@ sub new {
     $self->{_horiz_cat_axis}    = 0;
     $self->{_horiz_val_axis}    = 1;
     $self->{_protection}        = 0;
+    $self->{_default_marker}    = 'square';
 
     # The following values are dimensioned based on the need to support
     # settings associated with the y axis and another set of settings
@@ -2960,7 +2961,7 @@ sub _write_tx_pr {
 sub _write_marker {
 
     my $self = shift;
-    my $marker = shift // $self->{_default_marker};
+    my $marker = shift;
 
     return unless $marker;
     return if $marker->{automatic};
@@ -2968,7 +2969,8 @@ sub _write_marker {
     $self->{_writer}->startTag( 'c:marker' );
 
     # Write the c:symbol element.
-    $self->_write_symbol( $marker->{type} );
+    my $type = $marker->{type} // $self->{_default_marker};
+    $self->_write_symbol( $type );
 
     # Write the c:size element.
     my $size = $marker->{size};
@@ -2990,7 +2992,7 @@ sub _write_marker {
 sub _write_marker_value {
 
     my $self  = shift;
-    my $style = $self->{_default_marker};
+    my $style = shift;
 
     return unless $style;
 

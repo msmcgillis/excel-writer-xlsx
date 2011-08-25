@@ -408,6 +408,8 @@ sub set_legend {
     my %arg  = @_;
 
     $self->{_legend_position} = $arg{position} // 'right';
+    $self->{_legend_font}     = $arg{font}
+                         if (exists($arg{font}) && ref($arg{font}) eq "HASH");
     $self->{_legend_delete_series} = $arg{delete_series};
 }
 
@@ -2348,6 +2350,9 @@ sub _write_legend {
     # Write the c:overlay element.
     $self->_write_overlay() if $overlay;
 
+    # Write the c:txPr element.
+    $self->_write_tx_pr( undef, $self->{_legend_font}, undef);
+
     $self->{_writer}->endTag( 'c:legend' );
 }
 
@@ -4014,6 +4019,12 @@ The default legend position is C<right>. The available positions are:
     right
     overlay_left
     overlay_right
+
+=item * C<font>
+
+Set the font properties of the legend. See the L</CHART FORMATTING> section below. 
+
+    $chart->set_legend( font => { typeface=>"Arial", size=>"24" } );
 
 =item * delete_series
 

@@ -2756,7 +2756,7 @@ sub _write_a_def_rpr {
     my $font = shift;
 
     my @attributes = $self->_font_attributes($font);
-    if (exists($font->{name}) || exists($font->{color})) {
+    if (exists($font->{typeface}) || exists($font->{color})) {
 
       $self->{_writer}->startTag( 'a:defRPr', @attributes );
 
@@ -2765,7 +2765,7 @@ sub _write_a_def_rpr {
         $self->_write_a_solid_fill($font);
       }
 
-      if (exists($font->{name})) {
+      if (exists($font->{typeface})) {
         # Write the a:latin element.
         $self->_write_a_latin($font->{typeface});
 

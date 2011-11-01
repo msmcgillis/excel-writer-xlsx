@@ -275,8 +275,8 @@ sub set_x_axis {
         _formula         => $name_formula,
         _data_id         => $data_id,
         _reverse         => $arg{reverse},
-        _tick_label_skip =>exists($arg{ticklabelskip}) ?
-                           $arg{ticklabelskip} : undef,
+        _tick_label_skip =>exists($arg{ticklblskip}) ?
+                           $arg{ticklblskip} : undef,
         _tick_mark_skip  => exists($arg{tickmarkskip}) ?
                             $arg{tickmarkskip} : undef,
         _major_unit      => exists($arg{majorunit})?$arg{majorunit}:undef,
@@ -355,7 +355,7 @@ sub _set_y_axis {
     $update->{_formula}       = $name_formula;
     $update->{_data_id}       = $data_id;
     $update->{_reverse}       = $arg{reverse};
-    $update->{_mojor_unit}    = exists($arg{majorunit})?$arg{majorunit}:undef;
+    $update->{_major_unit}    = exists($arg{majorunit})?$arg{majorunit}:undef;
     $update->{_minor_unit}    = exists($arg{minorunit})?$arg{minorunit}:undef;
     $update->{_max}           = exists($arg{max})?$arg{max}:undef;
     $update->{_min}           = exists($arg{min})?$arg{min}:undef;
@@ -2769,7 +2769,7 @@ sub _write_a_def_rpr {
         # Write the a:latin element.
         $self->_write_a_latin($font->{typeface});
 
-        # Write the a:latin element.
+        # Write the a:cs element.
         $self->_write_a_cs($font->{typeface});
       }
 

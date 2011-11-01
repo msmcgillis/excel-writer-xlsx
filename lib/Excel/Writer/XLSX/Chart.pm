@@ -283,6 +283,7 @@ sub set_x_axis {
         _minor_unit      => exists($arg{minorunit})?$arg{minorunit}:undef,
         _max             => exists($arg{max})?$arg{max}:undef,
         _min             => exists($arg{min})?$arg{min}:undef,
+        _crosses_at      => exists($arg{crossesat})?$arg{crossesat}:undef,
         _number_format   => exists($arg{numberformat})?$arg{numberformat}:undef,
         _source_linked   => exists($arg{numberformat})?0:1
     );
@@ -1643,6 +1644,7 @@ sub _write_cat_axis {
                           $self->{_x_axis}[$plane]{_rotation}:undef;
     my $max             = $self->{_x_axis}[$plane]{_max};
     my $min             = $self->{_x_axis}[$plane]{_min};
+    my $crossesat       = $self->{_x_axis}[$plane]{_crosses_at};
     my $delete          = $self->{_x_axis}[$plane]{_delete};
     my $numfmt          = $self->{_x_axis}[$plane]{_number_format};
     my $srclnk          = $self->{_x_axis}[$plane]{_source_linked};
@@ -1682,8 +1684,13 @@ sub _write_cat_axis {
     # Write the c:crossAx element.
     $self->_write_cross_axis( $self->{_axis_ids}[$plane][1] );
 
-    # Write the c:crosses element.
-    $self->_write_crosses( 'autoZero' );
+    if (defined($crossesat)) {
+      # Write the c:crosses element.
+      $self->_write_crosses_at( $crossesat );
+    } else {
+      # Write the c:crosses element.
+      $self->_write_crosses( 'autoZero' );
+    }
 
     # Write the c:auto element.
     $self->_write_auto( 1 );
@@ -2136,6 +2143,22 @@ sub _write_crosses {
     my @attributes = ( 'val' => $val );
 
     $self->{_writer}->emptyTag( 'c:crosses', @attributes );
+}
+
+##############################################################################
+#
+# _write_crosses_at()
+#
+# Write the <c:crossesAt> element.
+#
+sub _write_crosses_at {
+
+    my $self = shift;
+    my $val  = shift;
+
+    my @attributes = ( 'val' => $val );
+
+    $self->{_writer}->emptyTag( 'c:crossesAt', @attributes );
 }
 
 
@@ -3876,6 +3899,12 @@ Set the max value in chart.
 Set the min value in chart.
 
     $chart->set_x_axis( min => -100 );
+
+=item * C<crossesat>
+
+Set the value Y axis value the X axis crosses at.
+
+    $chart->set_x_axis( crossesat => -10 );
 
 =item * C<numberformat>
 

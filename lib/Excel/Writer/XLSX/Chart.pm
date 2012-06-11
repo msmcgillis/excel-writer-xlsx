@@ -287,6 +287,8 @@ sub set_x_axis {
         _number_format   => exists($arg{numberformat})?$arg{numberformat}:undef,
         _source_linked   => exists($arg{numberformat})?0:1
     );
+    $result{_title_rotation} = $arg{title}{rotation}
+             if (exists($arg{title}{rotation}));
     $result{_title_font} = $arg{title}{font}
              if (exists($arg{title}{font}) && ref($arg{title}{font}) eq "HASH");
     $result{_font}       = $arg{font}
@@ -364,6 +366,8 @@ sub _set_y_axis {
                                 $arg{numberformat}:undef;
     $update->{_source_linked} = exists($arg{numberformat})? 
                                 0:1;
+    $update->{_title_rotation} = $arg{title}{rotation}
+             if (exists($arg{title}{rotation}));
     $update->{_title_font}    = $arg{title}{font}
              if (exists($arg{title}{font}) && ref($arg{title}{font}) eq "HASH");
     $update->{_font}          = $arg{font}
@@ -1683,6 +1687,8 @@ sub _write_cat_axis {
     my $horiz     = $self->{_horiz_cat_axis};
     my $x_reverse = $self->{_x_axis}[$plane]{_reverse};
     my $y_reverse = $self->{_y_axis}[$plane]{_reverse};
+    my $title_rotation= exists($self->{_x_axis}[$plane]{_title_rotation})?
+                    $self->{_x_axis}[$plane]{_title_rotation}:undef;
     my $title_font= exists($self->{_x_axis}[$plane]{_title_font})?
                     $self->{_x_axis}[$plane]{_title_font}:undef;
     my $font      = exists($self->{_x_axis}[$plane]{_font})?
@@ -1713,12 +1719,16 @@ sub _write_cat_axis {
 
     # Write the axis title elements.
     my $title;
+    if ($title_rotation) {
+       $horiz=undef;
+    }
     if ( $title = $self->{_x_axis}[$plane]{_formula} ) {
         $self->_write_title( $title, $self->{_x_axis}[$plane]{_data_id}, $horiz,
-                             $title_font, 'en-US' );
+                             $title_font, 'en-US',$title_rotation );
     }
     elsif ( $title = $self->{_x_axis}[$plane]{_name} ) {
-        $self->_write_title( $title, undef, $horiz, $title_font );
+        $self->_write_title( $title, undef, $horiz, $title_font, undef,
+                             $title_rotation );
     }
 
     # Write the c:numFmt element.
@@ -1780,6 +1790,8 @@ sub _write_val_axis {
     my $horiz                = $self->{_horiz_val_axis};
     my $x_reverse            = $self->{_x_axis}[$plane]{_reverse};
     my $y_reverse            = $self->{_y_axis}[$plane]{_reverse};
+    my $title_rotation= exists($self->{_y_axis}[$plane]{_title_rotation})?
+                    $self->{_y_axis}[$plane]{_title_rotation}:undef;
     my $title_font= exists($self->{_y_axis}[$plane]{_title_font})?
                     $self->{_y_axis}[$plane]{_title_font}:undef;
     my $font      = exists($self->{_y_axis}[$plane]{_font})?
@@ -1809,12 +1821,16 @@ sub _write_val_axis {
 
     # Write the axis title elements.
     my $title;
+    if ($title_rotation) {
+      $horiz=undef;
+    }
     if ( $title = $self->{_y_axis}[$plane]{_formula} ) {
         $self->_write_title( $title, $self->{_y_axis}[$plane]{_data_id}, $horiz,
-                             $title_font, 'en-US' );
+                             $title_font, 'en-US', $title_rotation );
     }
     elsif ( $title = $self->{_y_axis}[$plane]{_name} ) {
-        $self->_write_title( $title, undef, $horiz, $title_font );
+        $self->_write_title( $title, undef, $horiz, $title_font, undef,
+                             $title_rotation );
     }
 
     # Write the c:numberFormat element.
@@ -1869,6 +1885,8 @@ sub _write_cat_val_axis {
     my $horiz                = $self->{_horiz_val_axis};
     my $x_reverse            = $self->{_x_axis}[$plane]{_reverse};
     my $y_reverse            = $self->{_y_axis}[$plane]{_reverse};
+    my $title_rotation = exists($self->{_x_axis}[$plane]{_title_rotation})?
+                    $self->{_x_axis}[$plane]{_title_rotation}:undef;
     my $title_font= exists($self->{_x_axis}[$plane]{_title_font})?
                     $self->{_x_axis}[$plane]{_title_font}:undef;
     my $font      = exists($self->{_x_axis}[$plane]{_font})?
@@ -1897,12 +1915,16 @@ sub _write_cat_val_axis {
 
     # Write the axis title elements.
     my $title;
+    if ($title_rotation) {
+      $horiz=undef;
+    }
     if ( $title = $self->{_x_axis}[$plane]{_formula} ) {
         $self->_write_title( $title, $self->{_y_axis}[$plane]{_data_id}, $horiz,
-                             $title_font, 'en-US' );
+                             $title_font, 'en-US', $title_rotation );
     }
     elsif ( $title = $self->{_x_axis}[$plane]{_name} ) {
-        $self->_write_title( $title, undef, $horiz, $title_font );
+        $self->_write_title( $title, undef, $horiz, $title_font, undef,
+                             $title_rotation );
     }
 
     # Write the c:numberFormat element.
@@ -1947,6 +1969,8 @@ sub _write_date_axis {
     my $position = shift // $self->{_cat_axis_position};
     my $x_reverse = $self->{_x_axis}[$plane]{_reverse};
     my $y_reverse = $self->{_y_axis}[$plane]{_reverse};
+    my $title_rotation= exists($self->{_x_axis}[$plane]{_title_rotation})?
+                    $self->{_x_axis}[$plane]{_title_rotation}:undef;
     my $title_font= exists($self->{_x_axis}[$plane]{_title_font})?
                     $self->{_x_axis}[$plane]{_title_font}:undef;
     my $font      = exists($self->{_x_axis}[$plane]{_font})?
@@ -1974,10 +1998,11 @@ sub _write_date_axis {
     my $title;
     if ( $title = $self->{_x_axis}[$plane]{_formula} ) {
         $self->_write_title( $title, $self->{_x_axis}[$plane]{_data_id}, undef,
-                             $title_font, 'en-US' );
+                             $title_font, 'en-US', $title_rotation );
     }
     elsif ( $title = $self->{_x_axis}[$plane]{_name} ) {
-        $self->_write_title( $title, undef, undef, $title_font );
+        $self->_write_title( $title, undef, undef, $title_font, undef,
+                             $title_rotation );
     }
 
     # Write the c:numFmt element.
@@ -2595,17 +2620,18 @@ sub _write_page_setup {
 #
 sub _write_title {
 
-    my $self    = shift;
-    my $title   = shift;
-    my $data_id = shift;
-    my $horiz   = shift;
-    my $font    = shift;
-    my $lang    = shift;
+    my $self     = shift;
+    my $title    = shift;
+    my $data_id  = shift;
+    my $horiz    = shift;
+    my $font     = shift;
+    my $lang     = shift;
+    my $rotation = shift;
 
     $self->{_writer}->startTag( 'c:title' );
 
     # Write the c:tx element.
-    $self->_write_tx( $title, $data_id, $horiz, $font );
+    $self->_write_tx( $title, $data_id, $horiz, $font, $rotation );
 
     # Write the c:layout element.
     $self->_write_layout();
@@ -2625,11 +2651,12 @@ sub _write_title {
 #
 sub _write_tx {
 
-    my $self    = shift;
-    my $title   = shift;
-    my $data_id = shift;
-    my $horiz   = shift;
-    my $font    = shift;
+    my $self     = shift;
+    my $title    = shift;
+    my $data_id  = shift;
+    my $horiz    = shift;
+    my $font     = shift;
+    my $rotation = shift;
 
     $self->{_writer}->startTag( 'c:tx' );
 
@@ -2643,7 +2670,7 @@ sub _write_tx {
     } else {
 
         # Write the c:rich element.
-        $self->_write_rich( $title, $horiz, $font );
+        $self->_write_rich( $title, $horiz, $font, $rotation );
 
     }
 
@@ -2679,15 +2706,16 @@ sub _write_tx_value {
 #
 sub _write_rich {
 
-    my $self  = shift;
-    my $title = shift;
-    my $horiz = shift;
-    my $font  = shift;
+    my $self     = shift;
+    my $title    = shift;
+    my $horiz    = shift;
+    my $font     = shift;
+    my $rotation = shift;
 
     $self->{_writer}->startTag( 'c:rich' );
 
     # Write the a:bodyPr element.
-    $self->_write_a_body_pr( $horiz );
+    $self->_write_a_body_pr( $horiz, $rotation );
 
     # Write the a:lstStyle element.
     $self->_write_a_lst_style();
@@ -3891,6 +3919,7 @@ Set the name (title or caption) for the axis. The name is displayed below the X 
 Set the properties of the axis title can be used in place of name above when including title font information. See the L</CHART FORMATTING> section below.
 
    $chart->set_x_axis( title => { name=> "My Chart",
+                                  rotation => 45,
                                   font=>{ typeface=>"Arial", size=>"24" } );
 
 =item * C<reverse>
@@ -3986,7 +4015,8 @@ Set the name (title or caption) for the axis. The name is displayed to the left 
 
 Set the properties of the axis title can be used in place of name above when including title font information. See the L</CHART FORMATTING> section below.
 
-   $chart->set_x_axis( title => { name=> "My Chart",
+   $chart->set_y_axis( title => { name=> "My Chart",
+                                  rotation=> 90,
                                   font=>{ typeface=>"Arial", size=>"24" } );
 
 =item * C<reverse>
@@ -4106,15 +4136,15 @@ Set the font properties of the legend. See the L</CHART FORMATTING> section belo
 
     $chart->set_legend( font => { typeface=>"Arial", size=>"24" } );
 
-=item * delete_series
-
-This allows you to remove 1 or more series from the the legend (the series will still display on the chart). This property takes an array ref as an argument and the series are zero indexed:
-
 =item * C<layout>
 
 Set the legend layout position. Values are in percent of chart.
 
     $chart->set_legend( layout => { x=>0.3, y=>0.9, w=>0.4, h=>0.1 } );
+
+=item * delete_series
+
+This allows you to remove 1 or more series from the the legend (the series will still display on the chart). This property takes an array ref as an argument and the series are zero indexed:
 
     # Delete/hide series index 0 and 2 from the legend.
     $chart->set_legend( delete_series => [0, 2] );
@@ -4482,11 +4512,16 @@ The title format is used to specify properties of title objects that appear in a
 The following properties can be set for title formats in a chart.
 
     name
+    rotation
     font
 
 The C<name> is the text used for the actual title.
 
     $chart->set_x_axis( title => { name=>"Date" } );
+
+The C<rotation> is the degrees to rotate the title.
+
+    $chart->set_x_axis( title => { rotation=>90 } );
 
 The C<font> is the font used for the title.
 

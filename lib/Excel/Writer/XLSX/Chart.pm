@@ -412,6 +412,7 @@ sub set_legend {
     $self->{_legend_font}     = $arg{font}
                          if (exists($arg{font}) && ref($arg{font}) eq "HASH");
     $self->{_legend_delete_series} = $arg{delete_series};
+    $self->{_legend_layout} = $arg{layout} if (exists($arg{layout}));
 }
 
 
@@ -1275,8 +1276,56 @@ sub _write_plot_area {
 sub _write_layout {
 
     my $self = shift;
+    my $layout = shift;
 
-    $self->{_writer}->emptyTag( 'c:layout' );
+    if (defined($layout)) {
+      $self->{_writer}->startTag( 'c:layout' );
+      $self->_write_manual_layout($layout);
+      $self->{_writer}->endTag( 'c:layout' );
+    } else {
+      $self->{_writer}->emptyTag( 'c:layout' );
+    }
+}
+
+##############################################################################
+#
+# _write_manual_layout()
+#
+# Write the <c:manualLayout> element.
+#
+sub _write_manual_layout {
+    my $self = shift;
+    my $layout = shift;
+
+    if (defined($layout)) {
+      $self->{_writer}->startTag( 'c:manualLayout' );
+
+      # Write the c:xMode element.
+      my @attributes = ( 'val' => "edge" );
+      $self->{_writer}->emptyTag( 'c:xMode', @attributes );
+
+      # Write the c:yMode element.
+      @attributes = ( 'val' => "edge" );
+      $self->{_writer}->emptyTag( 'c:yMode', @attributes );
+
+      # Write the c:x element.
+      @attributes = ( 'val' => $layout->{x} );
+      $self->{_writer}->emptyTag( 'c:x', @attributes );
+
+      # Write the c:y element.
+      @attributes = ( 'val' => $layout->{y} );
+      $self->{_writer}->emptyTag( 'c:y', @attributes );
+
+      # Write the c:w element.
+      @attributes = ( 'val' => $layout->{w} );
+      $self->{_writer}->emptyTag( 'c:w', @attributes );
+
+      # Write the c:h element.
+      @attributes = ( 'val' => $layout->{h} );
+      $self->{_writer}->emptyTag( 'c:h', @attributes );
+
+      $self->{_writer}->endTag( 'c:manualLayout' );
+    }
 }
 
 
@@ -2368,7 +2417,9 @@ sub _write_legend {
     }
 
     # Write the c:layout element.
-    $self->_write_layout();
+    exists($self->{_legend_layout})?
+        $self->_write_layout($self->{_legend_layout}):
+        $self->_write_layout();
 
     # Write the c:overlay element.
     $self->_write_overlay() if $overlay;
@@ -4058,6 +4109,12 @@ Set the font properties of the legend. See the L</CHART FORMATTING> section belo
 =item * delete_series
 
 This allows you to remove 1 or more series from the the legend (the series will still display on the chart). This property takes an array ref as an argument and the series are zero indexed:
+
+=item * C<layout>
+
+Set the legend layout position. Values are in percent of chart.
+
+    $chart->set_legend( layout => { x=>0.3, y=>0.9, w=>0.4, h=>0.1 } );
 
     # Delete/hide series index 0 and 2 from the legend.
     $chart->set_legend( delete_series => [0, 2] );

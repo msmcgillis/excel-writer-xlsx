@@ -1776,7 +1776,7 @@ sub _write_val_axis {
     my $self                 = shift;
     my $plane                = shift;
     my $position             = $self->{_y_axis}[$plane]{_position};
-    my $hide_major_gridlines = shift;
+    my $hide_major_gridlines = shift || $plane ? 1 : undef;
     my $horiz                = $self->{_horiz_val_axis};
     my $x_reverse            = $self->{_x_axis}[$plane]{_reverse};
     my $y_reverse            = $self->{_y_axis}[$plane]{_reverse};

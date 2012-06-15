@@ -6,21 +6,21 @@ package Excel::Writer::XLSX::Package::SharedStrings;
 #
 # Used in conjunction with Excel::Writer::XLSX
 #
-# Copyright 2000-2011, John McNamara, jmcnamara@cpan.org
+# Copyright 2000-2012, John McNamara, jmcnamara@cpan.org
 #
 # Documentation after __END__
 #
 
 # perltidy with the following options: -mbl=2 -pt=0 -nola
 
-use 5.010000;
+use 5.008002;
 use strict;
 use warnings;
 use Carp;
 use Excel::Writer::XLSX::Package::XMLwriter;
 
 our @ISA     = qw(Excel::Writer::XLSX::Package::XMLwriter);
-our $VERSION = '0.24';
+our $VERSION = '0.47';
 
 
 ###############################################################################
@@ -75,7 +75,7 @@ sub _assemble_xml_file {
     # Close the sst tag.
     $self->{_writer}->endTag( 'sst' );
 
-    # Close the XM writer object and filehandle.
+    # Close the XML writer object and filehandle.
     $self->{_writer}->end();
     $self->{_writer}->getOutput()->close();
 }
@@ -189,6 +189,19 @@ sub _write_si {
     my $string     = shift;
     my @attributes = ();
 
+    # Excel escapes control characters with _xHHHH_ and also escapes any
+    # literal strings of that type by encoding the leading underscore. So
+    # "\0" -> _x0000_ and "_x0000_" -> _x005F_x0000_.
+    # The following substitutions deal with those cases.
+
+    # Escape the escape.
+    $string =~ s/(_x[0-9a-fA-F]{4}_)/_x005F$1/g;
+
+    # Convert control character to the _xHHHH_ escape.
+    $string =~ s/([\x00-\x08\x0B-\x1F])/sprintf "_x%04X_", ord($1)/eg;
+
+
+    # Add attribute to preserve leading or trailing whitespace.
     if ( $string =~ /^\s/ || $string =~ /\s$/ ) {
         push @attributes, ( 'xml:space' => 'preserve' );
     }
@@ -198,6 +211,8 @@ sub _write_si {
     # Write any rich strings without further tags.
     if ( $string =~ m{^<r>} && $string =~ m{</r>$} ) {
         my $fh = $self->{_writer}->getOutput();
+
+        local $\ = undef; # Protect print from -l on commandline.
         print $fh $string;
     }
     else {
@@ -233,7 +248,7 @@ John McNamara jmcnamara@cpan.org
 
 =head1 COPYRIGHT
 
-© MM-MMXI, John McNamara.
+© MM-MMXII, John McNamara.
 
 All Rights Reserved. This module is free software. It may be used, redistributed and/or modified under the same terms as Perl itself.
 

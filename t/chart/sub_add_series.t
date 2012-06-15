@@ -30,19 +30,20 @@ my $chart;
 #
 $caption  = " \tChart: add_series()";
 $expected = {
-    _index        => 0,
-    _categories   => undef,
-    _values       => '=Sheet1!$A$1:$A$5',
-    _name         => undef,
-    _name_formula => undef,
-    _name_id      => undef,
-    _cat_data_id  => undef,
-    _val_data_id  => 0,
-    _line         => { _defined => 0 },
-    _fill         => { _defined => 0 },
-    _marker       => undef,
-    _trendline    => undef,
-    _labels       => undef
+    _index         => 0,
+    _categories    => undef,
+    _values        => '=Sheet1!$A$1:$A$5',
+    _name          => undef,
+    _name_formula  => undef,
+    _name_id       => undef,
+    _cat_data_id   => undef,
+    _val_data_id   => 0,
+    _line          => { _defined => 0 },
+    _fill          => { _defined => 0 },
+    _marker        => undef,
+    _trendline     => undef,
+    _labels        => undef,
+    _invert_if_neg => undef,
 };
 
 $chart = _new_object( \$got, 'Excel::Writer::XLSX::Chart' );
@@ -61,25 +62,27 @@ _is_deep_diff( $got, $expected, $caption );
 $caption  = " \tChart: add_series()";
 $expected = [
     {
-        _index        => 0,
-        _categories   => '=Sheet1!$A$1:$A$5',
-        _values       => '=Sheet1!$B$1:$B$5',
-        _name         => 'Text',
-        _name_formula => undef,
-        _name_id      => undef,
-        _cat_data_id  => 0,
-        _val_data_id  => 1,
-        _line         => { _defined => 0 },
-        _fill         => { _defined => 0 },
-        _marker       => undef,
-        _trendline    => undef,
-        _labels       => undef
+        _index         => 0,
+        _categories    => '=Sheet1!$A$1:$A$5',
+        _values        => '=Sheet1!$B$1:$B$5',
+        _name          => 'Text',
+        _name_formula  => undef,
+        _name_id       => undef,
+        _cat_data_id   => 0,
+        _val_data_id   => 1,
+        _line          => { _defined => 0 },
+        _fill          => { _defined => 0 },
+        _marker        => undef,
+        _trendline     => undef,
+        _labels        => undef,
+        _invert_if_neg => undef,
     }
 ];
 
 $chart = _new_object( \$got, 'Excel::Writer::XLSX::Chart' );
 
 $chart->add_series(
+    _index     => 0,
     categories => '=Sheet1!$A$1:$A$5',
     values     => '=Sheet1!$B$1:$B$5',
     name       => 'Text'
@@ -97,19 +100,20 @@ _is_deep_diff( $got, $expected, $caption );
 $caption  = " \tChart: add_series()";
 $expected = [
     {
-        _index        => 0,
-        _categories   => undef,
-        _values       => '=Sheet1!$A$1:$A$5',
-        _name         => undef,
-        _name_formula => undef,
-        _name_id      => undef,
-        _cat_data_id  => undef,
-        _val_data_id  => 0,
-        _line         => { _defined => 0 },
-        _fill         => { _defined => 0 },
-        _marker       => undef,
-        _trendline    => undef,
-        _labels       => undef,
+        _index         => 0,
+        _categories    => undef,
+        _values        => '=Sheet1!$A$1:$A$5',
+        _name          => undef,
+        _name_formula  => undef,
+        _name_id       => undef,
+        _cat_data_id   => undef,
+        _val_data_id   => 0,
+        _line          => { _defined => 0 },
+        _fill          => { _defined => 0 },
+        _marker        => undef,
+        _trendline     => undef,
+        _labels        => undef,
+        _invert_if_neg => undef,
     }
 ];
 
@@ -128,19 +132,20 @@ _is_deep_diff( $got, $expected, $caption );
 #
 $caption  = " \tChart: add_series()";
 $expected = {
-    _index        => 0,
-    _categories   => '=Sheet1!$A$1:$A$5',
-    _values       => '=Sheet1!$B$1:$B$5',
-    _name         => 'Text',
-    _name_formula => undef,
-    _name_id      => undef,
-    _cat_data_id  => 0,
-    _val_data_id  => 1,
-    _line         => { _defined => 0 },
-    _fill         => { _defined => 0 },
-    _marker       => undef,
-    _trendline    => undef,
-    _labels       => undef,
+    _index         => 0,
+    _categories    => '=Sheet1!$A$1:$A$5',
+    _values        => '=Sheet1!$B$1:$B$5',
+    _name          => 'Text',
+    _name_formula  => undef,
+    _name_id       => undef,
+    _cat_data_id   => 0,
+    _val_data_id   => 1,
+    _line          => { _defined => 0 },
+    _fill          => { _defined => 0 },
+    _marker        => undef,
+    _trendline     => undef,
+    _labels        => undef,
+    _invert_if_neg => undef,
 };
 
 $chart = _new_object( \$got, 'Excel::Writer::XLSX::Chart' );

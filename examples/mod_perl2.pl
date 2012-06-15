@@ -11,7 +11,7 @@
 #
 # Change the name of this file to MP2Test.pm.
 # Change the package location to where ever you locate this package.
-# In the example below it is located in the WriteExcel directory.
+# In the example below it is located in the Excel::Writer::XLSX directory.
 #
 # Your httpd.conf entry for this module, should you choose to use it
 # as a stand alone app, should look similar to the following:
@@ -58,7 +58,7 @@ sub handler {
     ## Send the content type headers the mod_perl 2 way
     ####################################################
     $r->headers_out->{'Content-Disposition'} = "attachment;filename=$filename";
-    $r->content_type( 'application/vnd.ms-excel' );
+    $r->content_type( 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' );
 
     ####################################################
     # Tie a filehandle to Apache's STDOUT.

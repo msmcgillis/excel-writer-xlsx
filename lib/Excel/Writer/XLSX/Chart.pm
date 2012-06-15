@@ -7,14 +7,14 @@ package Excel::Writer::XLSX::Chart;
 #
 # Used in conjunction with Excel::Writer::XLSX.
 #
-# Copyright 2000-2011, John McNamara, jmcnamara@cpan.org
+# Copyright 2000-2012, John McNamara, jmcnamara@cpan.org
 #
 # Documentation after __END__
 #
 
 # perltidy with the following options: -mbl=2 -pt=0 -nola
 
-use 5.010000;
+use 5.008002;
 use strict;
 use warnings;
 use Carp;
@@ -26,7 +26,7 @@ use Excel::Writer::XLSX::Utility qw(xl_cell_to_rowcol
   xl_range_formula );
 
 our @ISA     = qw(Excel::Writer::XLSX::Package::XMLwriter);
-our $VERSION = '0.24';
+our $VERSION = '0.47';
 
 
 ###############################################################################
@@ -67,19 +67,26 @@ sub new {
     $self->{_subtype}           = shift;
     $self->{_sheet_type}        = 0x0200;
     $self->{_orientation}       = 0x0;
-    $self->{_ser_count}         = 0;    # Tracks the # series added
     $self->{_embedded}          = 0;
     $self->{_id}                = '';
     $self->{_style_id}          = 2;
     $self->{_has_category}      = 0;
     $self->{_requires_category} = 0;
     $self->{_legend_position}   = 'right';
-    $self->{_cat_axis_position} = 'b';  # should delete/move to _x_axis default
+    $self->{_cat_axis_position} = 'b';
+    $self->{_val_axis_position} = 'l';
     $self->{_formula_ids}       = {};
     $self->{_formula_data}      = [];
     $self->{_horiz_cat_axis}    = 0;
     $self->{_horiz_val_axis}    = 1;
     $self->{_protection}        = 0;
+    $self->{_x_axis}            = {};
+    $self->{_y_axis}            = {};
+
+    # For y2 axis support we must insure the series indix is unique regardless
+    # of what axis it applies to so we add a series _index value to all series
+    # during creation which is set from this value.
+    $self->{_ser_count}         = 0;
 
     # The following values are dimensioned based on the need to support
     # settings associated with the y axis and another set of settings
@@ -92,21 +99,21 @@ sub new {
                                         # $plane desired.
     $self->{_axis_ids}          = [[]];          # see comment above for _series
     $self->{_x_axis}            = [
-            # x axis default properties
+            # x axis properties
             {},
-            # x2 axis default properties
-            {_delete=>1}
+            # x2 axis properties
+            {
+              _delete=>1,
+              _crossing=>"max"
+            }
                                   ];
     $self->{_y_axis}            = [
-            # y axis default properties
+            # y axis properties
+            {},
+            # y2 axis properties
             {
-              _position => "l",
-              _crosses  => "autoZero"
-            },
-            # y2 axis default properties
-            {
-              _position => "r",
-              _crosses  => "max"
+              _position=>"r"        #values set in this must be considered in
+                                    #set_y2_axis as well
             }
                                   ];
 
@@ -147,7 +154,7 @@ sub _assemble_xml_file {
     $self->_write_chart();
 
     # Write the c:printSettings element.
-    $self->_write_print_settings() if $self->{_embedded};;
+    $self->_write_print_settings() if $self->{_embedded};
 
     # Close the worksheet tag.
     $self->{_writer}->endTag( 'c:chartSpace' );
@@ -187,8 +194,8 @@ sub add_series {
 
 
     # Convert aref params into a formula string.
-    my $values       = $self->_aref_to_formula( $arg{values} );
-    my $categories   = $self->_aref_to_formula( $arg{categories} );
+    my $values     = $self->_aref_to_formula( $arg{values} );
+    my $categories = $self->_aref_to_formula( $arg{categories} );
 
 
     # Switch name and name_formula parameters if required.
@@ -220,6 +227,9 @@ sub add_series {
     # Set the labels properties for the series.
     my $labels = $self->_get_labels_properties( $arg{data_labels} );
 
+    # Set the "invert if negative" fill property.
+    my $invert_if_neg = $arg{invert_if_negative};
+
     # Set the y2 properties for the series.
     my $plane = 0;
     $plane = 1 if (exists($arg{y2_axis}) && $arg{y2_axis});
@@ -239,6 +249,7 @@ sub add_series {
         _marker       => $marker,
         _trendline    => $trendline,
         _labels       => $labels,
+        _invert_if_neg => $invert_if_neg
     );
 
     push @{ $self->{_series}[$plane] }, \%arg;
@@ -254,49 +265,9 @@ sub add_series {
 sub set_x_axis {
 
     my $self = shift;
-    my %arg  = @_;
+    my $axis = $self->_convert_axis_args( @_ );
 
-    if (exists($arg{name})) {
-      $arg{title}{name}=$arg{name};                # For backwards compatability
-    }
-
-    if (exists($arg{name_formula})) {
-      $arg{title}{name_formula}=$arg{name_formula};# For backwards compatability
-    }
-
-    my ( $name, $name_formula ) =
-      $self->_process_names( $arg{title}{name}, $arg{title}{name_formula} );
-
-    my $data_id = $self->_get_data_id( $name_formula, $arg{data} );
-
-    # Add the user supplied data to the internal structures.
-    my %result = (
-        _name            => $name,
-        _formula         => $name_formula,
-        _data_id         => $data_id,
-        _reverse         => $arg{reverse},
-        _tick_label_skip =>exists($arg{ticklblskip}) ?
-                           $arg{ticklblskip} : undef,
-        _tick_mark_skip  => exists($arg{tickmarkskip}) ?
-                            $arg{tickmarkskip} : undef,
-        _major_unit      => exists($arg{majorunit})?$arg{majorunit}:undef,
-        _minor_unit      => exists($arg{minorunit})?$arg{minorunit}:undef,
-        _max             => exists($arg{max})?$arg{max}:undef,
-        _min             => exists($arg{min})?$arg{min}:undef,
-        _crosses_at      => exists($arg{crossesat})?$arg{crossesat}:undef,
-        _number_format   => exists($arg{numberformat})?$arg{numberformat}:undef,
-        _source_linked   => exists($arg{numberformat})?0:1
-    );
-    $result{_title_rotation} = $arg{title}{rotation}
-             if (exists($arg{title}{rotation}));
-    $result{_title_font} = $arg{title}{font}
-             if (exists($arg{title}{font}) && ref($arg{title}{font}) eq "HASH");
-    $result{_font}       = $arg{font}
-             if (exists($arg{font}) && ref($arg{font}) eq "HASH");
-    $result{_rotation}   = $arg{rotation} if exists($arg{rotation});
-
-
-   $self->{_x_axis}[0]=\%result;
+    $self->{_x_axis}[0] = $axis;
 }
 
 
@@ -309,8 +280,9 @@ sub set_x_axis {
 sub set_y_axis {
 
     my $self = shift;
+    my $axis = $self->_convert_axis_args( @_ );
 
-    $self->_set_y_axis(0,@_);
+    $self->{_y_axis}[0] = $axis;
 }
 
 ###############################################################################
@@ -322,58 +294,11 @@ sub set_y_axis {
 sub set_y2_axis {
 
     my $self=shift;
+    my %args=@_;
+    $args{position}="r" unless (defined($args{position}));
+    my $axis = $self->_convert_axis_args(%args);
 
-    $self->_set_y_axis(1,@_,"crosses"=>"max","position"=>"r");
-}
-
-
-###############################################################################
-#
-# _set_y_axis()
-#
-# Set the properties of the Y-axis.
-#
-sub _set_y_axis {
-
-    my $self  = shift;
-    my $plane = shift;
-    my %arg   = @_;
-
-    if (exists($arg{name})) {
-      $arg{title}{name}=$arg{name};                # For backwards compatability
-    }
-
-    if (exists($arg{name_formula})) {
-      $arg{title}{name_formula}=$arg{name_formula};# For backwards compatability
-    }
-
-    my ( $name, $name_formula ) =
-      $self->_process_names( $arg{title}{name}, $arg{title}{name_formula} );
-
-    my $data_id = $self->_get_data_id( $name_formula, $arg{data} );
-
-    # Add the user supplied data to the internal structures.
-    my $update=$self->{_y_axis}[$plane];
-    $update->{_name}          = $name;
-    $update->{_formula}       = $name_formula;
-    $update->{_data_id}       = $data_id;
-    $update->{_reverse}       = $arg{reverse};
-    $update->{_major_unit}    = exists($arg{majorunit})?$arg{majorunit}:undef;
-    $update->{_minor_unit}    = exists($arg{minorunit})?$arg{minorunit}:undef;
-    $update->{_max}           = exists($arg{max})?$arg{max}:undef;
-    $update->{_min}           = exists($arg{min})?$arg{min}:undef;
-    $update->{_number_format} = exists($arg{numberformat})? 
-                                $arg{numberformat}:undef;
-    $update->{_source_linked} = exists($arg{numberformat})? 
-                                0:1;
-    $update->{_title_rotation} = $arg{title}{rotation}
-             if (exists($arg{title}{rotation}));
-    $update->{_title_font}    = $arg{title}{font}
-             if (exists($arg{title}{font}) && ref($arg{title}{font}) eq "HASH");
-    $update->{_font}          = $arg{font}
-             if (exists($arg{font}) && ref($arg{font}) eq "HASH");
-    $update->{_rotation}      = $arg{rotation} if exists($arg{rotation});
-
+    $self->{_y_axis}[1] = $axis;
 }
 
 
@@ -412,7 +337,7 @@ sub set_legend {
     my $self = shift;
     my %arg  = @_;
 
-    $self->{_legend_position} = $arg{position} // 'right';
+    $self->{_legend_position} = $arg{position} || 'right';
     $self->{_legend_font}     = $arg{font}
                          if (exists($arg{font}) && ref($arg{font}) eq "HASH");
     $self->{_legend_delete_series} = $arg{delete_series};
@@ -557,7 +482,7 @@ sub set_chartarea {
 sub set_style {
 
     my $self = shift;
-    my $style_id = shift // 2;
+    my $style_id = defined $_[0] ? $_[0] : 2;
 
     if ( $style_id < 0 || $style_id > 42 ) {
         $style_id = 2;
@@ -573,6 +498,62 @@ sub set_style {
 # structuring of the Chart object and file format.
 #
 ###############################################################################
+
+
+###############################################################################
+#
+# _convert_axis_args()
+#
+# Convert user defined axis values into private hash values.
+#
+sub _convert_axis_args {
+
+    my $self = shift;
+    my %arg  = @_;
+    my $axis;
+
+    $arg{name} = $arg{title}{name} if (exists($arg{title}) &&
+                                       exists($arg{title}{name}));
+
+    my ( $name, $name_formula ) =
+      $self->_process_names( $arg{name}, $arg{name_formula} );
+
+    my $data_id = $self->_get_data_id( $name_formula, $arg{data} );
+
+    $axis = {
+        _name            => $name,
+        _formula         => $name_formula,
+        _data_id         => $data_id,
+        _reverse         => $arg{reverse},
+        _min             => $arg{min},
+        _max             => $arg{max},
+        _minor_unit      => $arg{minor_unit},
+        _major_unit      => $arg{major_unit},
+        _minor_unit_type => $arg{minor_unit_type},
+        _major_unit_type => $arg{major_unit_type},
+        _log_base        => $arg{log_base},
+        _crossing        => $arg{crossing},
+        _position        => $arg{position},
+        _label_position  => $arg{label_position},
+        _tick_lbl_skip   => $arg{tick_lbl_skip},
+        _tick_mark_skip  => $arg{tick_mark_skip},
+        _number_format   => $arg{number_format},
+    };
+
+    # Only use the first letter of bottom, top, left or right.
+    if ( defined $axis->{_position} ) {
+        $axis->{_position} = substr lc $axis->{_position}, 0, 1;
+    }
+    $axis->{_title_rotation} = $arg{title}{rotation}
+             if (exists($arg{title}{rotation}));
+    $axis->{_title_font} = $arg{title}{font}
+             if (exists($arg{title}{font}) && ref($arg{title}{font}) eq "HASH");
+    $axis->{_font}       = $arg{font}
+             if (exists($arg{font}) && ref($arg{font}) eq "HASH");
+    $axis->{_rotation}   = $arg{rotation} if exists($arg{rotation});
+
+    return $axis;
+}
 
 
 ###############################################################################
@@ -1022,10 +1003,35 @@ sub _get_trendline_properties {
 #
 sub _get_labels_properties {
 
-    my $self = shift;
+    my $self   = shift;
     my $labels = shift;
 
     return undef unless $labels;
+
+    # Map user defined label positions to Excel positions.
+    if ( my $position = $labels->{position} ) {
+
+        my %positions = (
+            center      => 'ctr',
+            right       => 'r',
+            left        => 'l',
+            top         => 't',
+            above       => 't',
+            bottom      => 'b',
+            below       => 'b',
+            inside_end  => 'inEnd',
+            outside_end => 'outEnd',
+            best_fit    => 'bestFit',
+        );
+
+        if ( exists $positions{$position} ) {
+            $labels->{position} = $positions{$position};
+        }
+        else {
+            carp "Unknown label position '$position'";
+            $labels->{position} = $positions{$position};
+        }
+    }
 
     return $labels;
 }
@@ -1262,8 +1268,8 @@ sub _write_plot_area {
         # Write the c:catAx element.
         $self->_write_cat_axis($plane);
 
-        # Write the c:catAx element.
-        $self->_write_val_axis($plane);
+        # Write the c:valAx element.
+        $self->_write_val_axis($plane,undef,$plane);
 
     }
 
@@ -1400,8 +1406,8 @@ sub _write_series {
 #
 sub _write_ser {
 
-    my $self       = shift;
-    my $series     = shift;
+    my $self   = shift;
+    my $series = shift;
 
     $self->{_writer}->startTag( 'c:ser' );
 
@@ -1419,6 +1425,9 @@ sub _write_ser {
 
     # Write the c:marker element.
     $self->_write_marker( $series->{_marker} );
+
+    # Write the c:invertIfNegative element.
+    $self->_write_c_invert_if_negative( $series->{_invert_if_neg} );
 
     # Write the c:dLbls element.
     $self->_write_d_lbls( $series->{_labels} );
@@ -1604,7 +1613,6 @@ sub _write_num_ref {
 }
 
 
-
 ##############################################################################
 #
 # _write_str_ref()
@@ -1677,78 +1685,70 @@ sub _write_axis_id {
 #
 # _write_cat_axis()
 #
-# Write the <c:catAx> element.
+# Write the <c:catAx> element. Usually the X axis.
 #
 sub _write_cat_axis {
 
-    my $self      = shift;
-    my $plane      = shift;
-    my $position  = shift // $self->{_cat_axis_position};
-    my $horiz     = $self->{_horiz_cat_axis};
-    my $x_reverse = $self->{_x_axis}[$plane]{_reverse};
-    my $y_reverse = $self->{_y_axis}[$plane]{_reverse};
-    my $title_rotation= exists($self->{_x_axis}[$plane]{_title_rotation})?
-                    $self->{_x_axis}[$plane]{_title_rotation}:undef;
-    my $title_font= exists($self->{_x_axis}[$plane]{_title_font})?
-                    $self->{_x_axis}[$plane]{_title_font}:undef;
-    my $font      = exists($self->{_x_axis}[$plane]{_font})?
-                    $self->{_x_axis}[$plane]{_font}:undef;
-    my $tick_label_skip = $self->{_x_axis}[$plane]{_tick_label_skip};
-    my $tick_mark_skip  = $self->{_x_axis}[$plane]{_tick_mark_skip};
-    my $rotation        = exists($self->{_x_axis}[$plane]{_rotation})?
-                          $self->{_x_axis}[$plane]{_rotation}:undef;
-    my $max             = $self->{_x_axis}[$plane]{_max};
-    my $min             = $self->{_x_axis}[$plane]{_min};
-    my $crossesat       = $self->{_x_axis}[$plane]{_crosses_at};
-    my $delete          = $self->{_x_axis}[$plane]{_delete};
-    my $numfmt          = $self->{_x_axis}[$plane]{_number_format};
-    my $srclnk          = $self->{_x_axis}[$plane]{_source_linked};
+    my $self     = shift;
+    my $plane    = shift;
+    my $position = $self->{_cat_axis_position};
+    my $horiz    = $self->{_horiz_cat_axis};
+    my $x_axis   = $self->{_x_axis}[$plane];
+    my $y_axis   = $self->{_y_axis}[$plane];
+
+    # Overwrite the default axis position with a user supplied value.
+    $position = $x_axis->{_position} || $position;
 
     $self->{_writer}->startTag( 'c:catAx' );
 
     $self->_write_axis_id( $self->{_axis_ids}[$plane][0] );
 
     # Write the c:scaling element.
-    $self->_write_scaling( $x_reverse, $max, $min );
+    $self->_write_scaling( $x_axis->{_reverse} );
 
     # Write the c:delete element.
-    $self->_write_delete( $delete );
+    $self->_write_delete( $x_axis->{_delete} );
 
     # Write the c:axPos element.
-    $self->_write_axis_pos( $position, $y_reverse );
+    $self->_write_axis_pos( $position, $y_axis->{_reverse} );
 
     # Write the axis title elements.
     my $title;
-    if ($title_rotation) {
+    if ($x_axis->{_title_rotation}) {
        $horiz=undef;
     }
-    if ( $title = $self->{_x_axis}[$plane]{_formula} ) {
-        $self->_write_title( $title, $self->{_x_axis}[$plane]{_data_id}, $horiz,
-                             $title_font, 'en-US',$title_rotation );
+    if ( $title = $x_axis->{_formula} ) {
+        $self->_write_title( $title, $x_axis->{_data_id}, $horiz,
+                             $x_axis->{_title_font}, 'en-US',
+                             $x_axis->{_title_rotation} );
     }
-    elsif ( $title = $self->{_x_axis}[$plane]{_name} ) {
-        $self->_write_title( $title, undef, $horiz, $title_font, undef,
-                             $title_rotation );
+    elsif ( $title = $x_axis->{_name} ) {
+        $self->_write_title( $title, undef, $horiz,
+                             $x_axis->{_title_font}, undef,
+                             $x_axis->{_title_rotation} );
     }
 
     # Write the c:numFmt element.
-    if ($self->{_has_category} || defined($numfmt)) {
-        $numfmt='General' unless defined($numfmt);
-        $self->_write_num_fmt($numfmt,$srclnk);
+    if ($self->{_has_category} || defined($x_axis->{_number_format})) {
+        $self->_write_num_fmt($x_axis->{_number_format});
     } 
 
     # Write the c:tickLblPos element.
-    $self->_write_tick_label_pos( 'nextTo' );
+    $self->_write_tick_label_pos( $x_axis->{_label_position} );
 
     # Write the c:crossAx element.
     $self->_write_cross_axis( $self->{_axis_ids}[$plane][1] );
 
-    if (defined($crossesat)) {
-      # Write the c:crosses element.
-      $self->_write_crosses_at( $crossesat );
-    } else {
-      # Write the c:crosses element.
-      $self->_write_crosses( 'autoZero' );
+    # Note, the category crossing comes from the value axis.
+    if ( !defined $y_axis->{_crossing} || $y_axis->{_crossing} eq 'max' ) {
+
+        # Write the c:crosses element.
+        $self->_write_crosses( $y_axis->{_crossing} );
+    }
+    else {
+
+        # Write the c:crossesAt element.
+        $self->_write_c_crosses_at( $y_axis->{_crossing} );
     }
 
     # Write the c:auto element.
@@ -1761,13 +1761,13 @@ sub _write_cat_axis {
     $self->_write_label_offset( 100 );
 
     # Write the c:tickLblSkip element.
-    $self->_write_tick_lbl_skip( $tick_label_skip );
+    $self->_write_tick_lbl_skip( $x_axis->{_tick_lbl_skip} );
 
     # Write the c:auto element.
-    $self->_write_tick_mark_skip( $tick_mark_skip );
+    $self->_write_tick_mark_skip( $x_axis->{_tick_mark_skip} );
 
     # Write the c:txPr element.
-    $self->_write_tx_pr( undef, $font, undef, $rotation );
+    $self->_write_tx_pr( undef, $x_axis->{_font}, undef, $x_axis->{_rotation} );
 
     $self->{_writer}->endTag( 'c:catAx' );
 }
@@ -1777,7 +1777,7 @@ sub _write_cat_axis {
 #
 # _write_val_axis()
 #
-# Write the <c:valAx> element.
+# Write the <c:valAx> element. Usually the Y axis.
 #
 # TODO. Maybe should have a _write_cat_val_axis() method as well for scatter.
 #
@@ -1785,55 +1785,46 @@ sub _write_val_axis {
 
     my $self                 = shift;
     my $plane                = shift;
-    my $position             = $self->{_y_axis}[$plane]{_position};
-    my $hide_major_gridlines = shift || $plane ? 1 : undef;
+    my $position             = shift || $self->{_val_axis_position};
+    my $hide_major_gridlines = shift;
     my $horiz                = $self->{_horiz_val_axis};
-    my $x_reverse            = $self->{_x_axis}[$plane]{_reverse};
-    my $y_reverse            = $self->{_y_axis}[$plane]{_reverse};
-    my $title_rotation= exists($self->{_y_axis}[$plane]{_title_rotation})?
-                    $self->{_y_axis}[$plane]{_title_rotation}:undef;
-    my $title_font= exists($self->{_y_axis}[$plane]{_title_font})?
-                    $self->{_y_axis}[$plane]{_title_font}:undef;
-    my $font      = exists($self->{_y_axis}[$plane]{_font})?
-                    $self->{_y_axis}[$plane]{_font}:undef;
-    my $major_unit      = $self->{_y_axis}[$plane]{_major_unit};
-    my $minor_unit      = $self->{_y_axis}[$plane]{_minor_unit};
-    my $rotation        = exists($self->{_y_axis}[$plane]{_rotation})?
-                          $self->{_y_axis}[$plane]{_rotation}:undef;
-    my $max             = $self->{_y_axis}[$plane]{_max};
-    my $min             = $self->{_y_axis}[$plane]{_min};
-    my $crosses         = $self->{_y_axis}[$plane]{_crosses};
-    my $numfmt          = $self->{_y_axis}[$plane]{_number_format};
-    my $srclnk          = $self->{_y_axis}[$plane]{_source_linked};
+    my $x_axis               = $self->{_x_axis}[$plane];
+    my $y_axis               = $self->{_y_axis}[$plane];
+
+    # Overwrite the default axis position with a user supplied value.
+    $position = $y_axis->{_position} || $position;
 
     $self->{_writer}->startTag( 'c:valAx' );
 
     $self->_write_axis_id( $self->{_axis_ids}[$plane][1] );
 
     # Write the c:scaling element.
-    $self->_write_scaling( $y_reverse, $max, $min );
+    $self->_write_scaling( $y_axis->{_reverse}, $y_axis->{_min},
+        $y_axis->{_max}, $y_axis->{_log_base}  );
 
     # Write the c:axPos element.
-    $self->_write_axis_pos( $position, $x_reverse );
+    $self->_write_axis_pos( $position, $x_axis->{_reverse} );
 
     # Write the c:majorGridlines element.
     $self->_write_major_gridlines() if not $hide_major_gridlines;
 
     # Write the axis title elements.
     my $title;
-    if ($title_rotation) {
+    if ($y_axis->{_title_rotation}) {
       $horiz=undef;
     }
-    if ( $title = $self->{_y_axis}[$plane]{_formula} ) {
-        $self->_write_title( $title, $self->{_y_axis}[$plane]{_data_id}, $horiz,
-                             $title_font, 'en-US', $title_rotation );
+    if ( $title = $y_axis->{_formula} ) {
+        $self->_write_title( $title, $y_axis->{_data_id}, $horiz,
+                             $y_axis->{_title_font}, 'en-US',
+                             $y_axis->{_title_rotation} );
     }
-    elsif ( $title = $self->{_y_axis}[$plane]{_name} ) {
-        $self->_write_title( $title, undef, $horiz, $title_font, undef,
-                             $title_rotation );
+    elsif ( $title = $y_axis->{_name} ) {
+        $self->_write_title( $title, undef, $horiz, $y_axis->{_title_font},
+                             undef, $y_axis->{_title_rotation} );
     }
 
     # Write the c:numberFormat element.
+    my $numfmt=$y_axis->{_number_format};
     unless (defined($numfmt)) {
       if (defined($self->{_subtype}) &&
           $self->{_subtype} eq 'percent_stacked') {
@@ -1842,28 +1833,37 @@ sub _write_val_axis {
         $numfmt='General';
       }
     }
-    $self->_write_num_fmt($numfmt,$srclnk);
+    $self->_write_num_fmt($numfmt);
 
     # Write the c:tickLblPos element.
-    $self->_write_tick_label_pos( 'nextTo' );
+    $self->_write_tick_label_pos( $y_axis->{_label_position} );
 
     # Write the c:crossAx element.
     $self->_write_cross_axis( $self->{_axis_ids}[$plane][0] );
 
-    # Write the c:crosses element.
-    $self->_write_crosses( $crosses );
+    # Note, the category crossing comes from the value axis.
+    if ( !defined $x_axis->{_crossing} || $x_axis->{_crossing} eq 'max' ) {
+
+        # Write the c:crosses element.
+        $self->_write_crosses( $x_axis->{_crossing} );
+    }
+    else {
+
+        # Write the c:crossesAt element.
+        $self->_write_c_crosses_at( $x_axis->{_crossing} );
+    }
 
     # Write the c:crossBetween element.
     $self->_write_cross_between();
 
     # Write the c:majorUnit element.
-    $self->_write_major_unit( $major_unit );
+    $self->_write_c_major_unit( $y_axis->{_major_unit} );
 
     # Write the c:minorUnit element.
-    $self->_write_minor_unit( $minor_unit );
+    $self->_write_c_minor_unit( $y_axis->{_minor_unit} );
 
     # Write the c:txPr element.
-    $self->_write_tx_pr( undef, $font, undef, $rotation );
+    $self->_write_tx_pr( undef, $y_axis->{_font}, undef, $y_axis->{_rotation} );
 
     $self->{_writer}->endTag( 'c:valAx' );
 }
@@ -1874,83 +1874,82 @@ sub _write_val_axis {
 # _write_cat_val_axis()
 #
 # Write the <c:valAx> element. This is for the second valAx in scatter plots.
-#
+# Usually the X axis.
 #
 sub _write_cat_val_axis {
 
     my $self                 = shift;
     my $plane                = shift;
-    my $position             = shift // $self->{_cat_axis_position};
+    my $position             = shift || $self->{_val_axis_position};
     my $hide_major_gridlines = shift;
     my $horiz                = $self->{_horiz_val_axis};
-    my $x_reverse            = $self->{_x_axis}[$plane]{_reverse};
-    my $y_reverse            = $self->{_y_axis}[$plane]{_reverse};
-    my $title_rotation = exists($self->{_x_axis}[$plane]{_title_rotation})?
-                    $self->{_x_axis}[$plane]{_title_rotation}:undef;
-    my $title_font= exists($self->{_x_axis}[$plane]{_title_font})?
-                    $self->{_x_axis}[$plane]{_title_font}:undef;
-    my $font      = exists($self->{_x_axis}[$plane]{_font})?
-                    $self->{_x_axis}[$plane]{_font}:undef;
-    my $major_unit      = $self->{_x_axis}[$plane]{_major_unit};
-    my $minor_unit      = $self->{_x_axis}[$plane]{_minor_unit};
-    my $rotation        = exists($self->{_x_axis}[$plane]{_rotation})?
-                          $self->{_x_axis}[$plane]{_rotation}:undef;
-    my $max             = $self->{_x_axis}[$plane]{_max};
-    my $min             = $self->{_x_axis}[$plane]{_min};
-    my $numfmt          = $self->{_x_axis}[$plane]{_number_format};
-    my $srclnk          = $self->{_x_axis}[$plane]{_source_linked};
+    my $x_axis               = $self->{_x_axis}[$plane];
+    my $y_axis               = $self->{_y_axis}[$plane];
+
+    # Overwrite the default axis position with a user supplied value.
+    $position = $x_axis->{_position} || $position;
 
     $self->{_writer}->startTag( 'c:valAx' );
 
     $self->_write_axis_id( $self->{_axis_ids}[$plane][0] );
 
     # Write the c:scaling element.
-    $self->_write_scaling( $x_reverse, $max, $min );
+    $self->_write_scaling( $x_axis->{_reverse}, $x_axis->{_min},
+        $x_axis->{_max}, $x_axis->{_log_base} );
 
     # Write the c:axPos element.
-    $self->_write_axis_pos( $position, $y_reverse );
+    $self->_write_axis_pos( $position, $y_axis->{_reverse} );
 
     # Write the c:majorGridlines element.
     $self->_write_major_gridlines() if not $hide_major_gridlines;
 
     # Write the axis title elements.
     my $title;
-    if ($title_rotation) {
+    if ($x_axis->{_title_rotation}) {
       $horiz=undef;
     }
-    if ( $title = $self->{_x_axis}[$plane]{_formula} ) {
-        $self->_write_title( $title, $self->{_y_axis}[$plane]{_data_id}, $horiz,
-                             $title_font, 'en-US', $title_rotation );
+    if ( $title = $x_axis->{_formula} ) {
+        $self->_write_title( $title, $y_axis->{_data_id}, $horiz,
+                             $y_axis->{_title_font}, 'en-US',
+                             $y_axis->{_title_rotation} );
     }
-    elsif ( $title = $self->{_x_axis}[$plane]{_name} ) {
-        $self->_write_title( $title, undef, $horiz, $title_font, undef,
-                             $title_rotation );
+    elsif ( $title = $x_axis->{_name} ) {
+        $self->_write_title( $title, undef, $horiz, $y_axis->{_title_font},
+                             undef, $y_axis->{_title_rotation} );
     }
 
     # Write the c:numberFormat element.
-    $numfmt='General' unless defined($numfmt);
-    $self->_write_num_fmt($numfmt,$srclnk);
+    $self->_write_num_fmt($y_axis->{_number_format});
 
     # Write the c:tickLblPos element.
-    $self->_write_tick_label_pos( 'nextTo' );
+    $self->_write_tick_label_pos( $x_axis->{_label_position} );
 
     # Write the c:crossAx element.
     $self->_write_cross_axis( $self->{_axis_ids}[$plane][1] );
 
-    # Write the c:crosses element.
-    $self->_write_crosses( 'autoZero' );
+    # Note, the category crossing comes from the value axis.
+    if ( !defined $y_axis->{_crossing} || $y_axis->{_crossing} eq 'max' ) {
+
+        # Write the c:crosses element.
+        $self->_write_crosses( $y_axis->{_crossing} );
+    }
+    else {
+
+        # Write the c:crossesAt element.
+        $self->_write_c_crosses_at( $y_axis->{_crossing} );
+    }
 
     # Write the c:crossBetween element.
     $self->_write_cross_between();
 
     # Write the c:majorUnit element.
-    $self->_write_major_unit( $major_unit );
+    $self->_write_c_major_unit( $x_axis->{_major_unit} );
 
     # Write the c:minorUnit element.
-    $self->_write_minor_unit( $minor_unit );
+    $self->_write_c_minor_unit( $x_axis->{_minor_unit} );
 
     # Write the c:txPr element.
-    $self->_write_tx_pr( undef, $font, undef, $rotation );
+    $self->_write_tx_pr( undef, $x_axis->{_font}, undef, $x_axis->{_rotation} );
 
     $self->{_writer}->endTag( 'c:valAx' );
 }
@@ -1960,63 +1959,64 @@ sub _write_cat_val_axis {
 #
 # _write_date_axis()
 #
-# Write the <c:dateAx> element.
+# Write the <c:dateAx> element. Usually the X axis.
 #
 sub _write_date_axis {
 
     my $self     = shift;
-    my $plane     = shift;
-    my $position = shift // $self->{_cat_axis_position};
-    my $x_reverse = $self->{_x_axis}[$plane]{_reverse};
-    my $y_reverse = $self->{_y_axis}[$plane]{_reverse};
-    my $title_rotation= exists($self->{_x_axis}[$plane]{_title_rotation})?
-                    $self->{_x_axis}[$plane]{_title_rotation}:undef;
-    my $title_font= exists($self->{_x_axis}[$plane]{_title_font})?
-                    $self->{_x_axis}[$plane]{_title_font}:undef;
-    my $font      = exists($self->{_x_axis}[$plane]{_font})?
-                    $self->{_x_axis}[$plane]{_font}:undef;
-    my $major_unit      = $self->{_x_axis}[$plane]{_major_unit};
-    my $minor_unit      = $self->{_x_axis}[$plane]{_minor_unit};
-    my $rotation        = exists($self->{_x_axis}[$plane]{_rotation})?
-                          $self->{_x_axis}[$plane]{_rotation}:undef;
-    my $max             = $self->{_x_axis}[$plane]{_max};
-    my $min             = $self->{_x_axis}[$plane]{_min};
-    my $numfmt          = $self->{_x_axis}[$plane]{_number_format};
-    my $srclnk          = $self->{_x_axis}[$plane]{_source_linked};
+    my $plane    = shift;
+    my $position = $self->{_cat_axis_position};
+    my $x_axis   = $self->{_x_axis}[$plane];
+    my $y_axis   = $self->{_y_axis}[$plane];
+
+    # Overwrite the default axis position with a user supplied value.
+    $position = $x_axis->{_position} || $position;
 
     $self->{_writer}->startTag( 'c:dateAx' );
 
     $self->_write_axis_id( $self->{_axis_ids}[$plane][0] );
 
     # Write the c:scaling element.
-    $self->_write_scaling( $x_reverse, $max, $min );
+    $self->_write_scaling( $x_axis->{_reverse}, $x_axis->{_min},
+        $x_axis->{_max}, $x_axis->{_log_base} );
 
     # Write the c:axPos element.
-    $self->_write_axis_pos( $position, $y_reverse );
+    $self->_write_axis_pos( $position, $y_axis->{_reverse} );
 
     # Write the axis title elements.
     my $title;
-    if ( $title = $self->{_x_axis}[$plane]{_formula} ) {
-        $self->_write_title( $title, $self->{_x_axis}[$plane]{_data_id}, undef,
-                             $title_font, 'en-US', $title_rotation );
+    if ( $title = $x_axis->{_formula} ) {
+        $self->_write_title( $title, $x_axis->{_data_id}, undef,
+                             $x_axis->{_title_font}, 'en-US',
+                             $x_axis->{_title_rotation} );
     }
-    elsif ( $title = $self->{_x_axis}[$plane]{_name} ) {
-        $self->_write_title( $title, undef, undef, $title_font, undef,
-                             $title_rotation );
+    elsif ( $title = $x_axis->{_name} ) {
+        $self->_write_title( $title, undef, undef, $x_axis->{_title_font},
+                             undef, $x_axis->{_title_rotation} );
     }
 
     # Write the c:numFmt element.
-    $numfmt='dd/mm/yyyy' unless defined($numfmt);
-    $self->_write_num_fmt($numfmt,$srclnk);
+    my $numfmt='dd/mm/yyyy';
+    $numfmt=$x_axis->{_number_format} if defined($x_axis->{_number_format});
+    $self->_write_num_fmt($numfmt);
 
     # Write the c:tickLblPos element.
-    $self->_write_tick_label_pos( 'nextTo' );
+    $self->_write_tick_label_pos( $x_axis->{_label_position} );
 
     # Write the c:crossAx element.
     $self->_write_cross_axis( $self->{_axis_ids}[$plane][1] );
 
-    # Write the c:crosses element.
-    $self->_write_crosses( 'autoZero' );
+    # Note, the category crossing comes from the value axis.
+    if ( !defined $y_axis->{_crossing} || $y_axis->{_crossing} eq 'max' ) {
+
+        # Write the c:crosses element.
+        $self->_write_crosses( $y_axis->{_crossing} );
+    }
+    else {
+
+        # Write the c:crossesAt element.
+        $self->_write_c_crosses_at( $y_axis->{_crossing} );
+    }
 
     # Write the c:auto element.
     $self->_write_auto( 1 );
@@ -2025,13 +2025,23 @@ sub _write_date_axis {
     $self->_write_label_offset( 100 );
 
     # Write the c:majorUnit element.
-    $self->_write_major_unit( $major_unit );
+    $self->_write_c_major_unit( $x_axis->{_major_unit} );
+
+    # Write the c:majorTimeUnit element.
+    if ( defined $x_axis->{_major_unit} ) {
+        $self->_write_c_major_time_unit( $x_axis->{_major_unit_type} );
+    }
 
     # Write the c:minorUnit element.
-    $self->_write_minor_unit( $minor_unit );
+    $self->_write_c_minor_unit( $x_axis->{_minor_unit} );
+
+    # Write the c:minorTimeUnit element.
+    if ( defined $x_axis->{_minor_unit} ) {
+        $self->_write_c_minor_time_unit( $x_axis->{_minor_unit_type} );
+    }
 
     # Write the c:txPr element.
-    $self->_write_tx_pr( undef, $font, undef, $rotation );
+    $self->_write_tx_pr( undef, $x_axis->{_font}, undef, $x_axis->{_rotation} );
 
     $self->{_writer}->endTag( 'c:dateAx' );
 }
@@ -2045,23 +2055,46 @@ sub _write_date_axis {
 #
 sub _write_scaling {
 
-    my $self    = shift;
-    my $reverse = shift;
-    my $max     = shift;
-    my $min     = shift;
+    my $self     = shift;
+    my $reverse  = shift;
+    my $min      = shift;
+    my $max      = shift;
+    my $log_base = shift;
 
     $self->{_writer}->startTag( 'c:scaling' );
+
+    # Write the c:logBase element.
+    $self->_write_c_log_base( $log_base );
 
     # Write the c:orientation element.
     $self->_write_orientation( $reverse );
 
     # Write the c:max element.
-    $self->_write_max( $max );
+    $self->_write_c_max( $max );
 
     # Write the c:min element.
-    $self->_write_min( $min );
+    $self->_write_c_min( $min );
 
     $self->{_writer}->endTag( 'c:scaling' );
+}
+
+
+##############################################################################
+#
+# _write_c_log_base()
+#
+# Write the <c:logBase> element.
+#
+sub _write_c_log_base {
+
+    my $self = shift;
+    my $val  = shift;
+
+    return unless $val;
+
+    my @attributes = ( 'val' => $val );
+
+    $self->{_writer}->emptyTag( 'c:logBase', @attributes );
 }
 
 
@@ -2077,7 +2110,7 @@ sub _write_orientation {
     my $reverse = shift;
     my $val     = 'minMax';
 
-    $val  = 'maxMin' if $reverse;
+    $val = 'maxMin' if $reverse;
 
     my @attributes = ( 'val' => $val );
 
@@ -2087,16 +2120,16 @@ sub _write_orientation {
 
 ##############################################################################
 #
-# _write_max()
+# _write_c_max()
 #
 # Write the <c:max> element.
 #
-sub _write_max {
+sub _write_c_max {
 
     my $self = shift;
     my $max  = shift;
 
-    return unless (defined($max));
+    return unless defined $max;
 
     my @attributes = ( 'val' => $max );
 
@@ -2106,16 +2139,16 @@ sub _write_max {
 
 ##############################################################################
 #
-# _write_min()
+# _write_c_min()
 #
 # Write the <c:min> element.
 #
-sub _write_min {
+sub _write_c_min {
 
     my $self = shift;
     my $min  = shift;
 
-    return unless (defined($min));
+    return unless defined $min;
 
     my @attributes = ( 'val' => $min );
 
@@ -2135,10 +2168,10 @@ sub _write_axis_pos {
     my $val     = shift;
     my $reverse = shift;
 
-     if ($reverse) {
-          $val = 'r' if $val eq 'l';
-          $val = 't' if $val eq 'b';
-     }
+    if ( $reverse ) {
+        $val = 'r' if $val eq 'l';
+        $val = 't' if $val eq 'b';
+    }
 
     my @attributes = ( 'val' => $val );
 
@@ -2155,8 +2188,8 @@ sub _write_axis_pos {
 sub _write_num_fmt {
 
     my $self          = shift;
-    my $format_code   = shift;
-    my $source_linked = shift // 1;
+    my $format_code   = shift || 'General';
+    my $source_linked = 1;
 
     return unless $format_code;
 
@@ -2178,7 +2211,11 @@ sub _write_num_fmt {
 sub _write_tick_label_pos {
 
     my $self = shift;
-    my $val  = shift;
+    my $val  = shift || 'nextTo';
+
+    if ($val eq 'next_to') {
+        $val =  'nextTo';
+    }
 
     my @attributes = ( 'val' => $val );
 
@@ -2212,7 +2249,7 @@ sub _write_cross_axis {
 sub _write_crosses {
 
     my $self = shift;
-    my $val  = shift;
+    my $val  = shift || 'autoZero';
 
     my @attributes = ( 'val' => $val );
 
@@ -2276,39 +2313,18 @@ sub _write_tick_mark_skip {
 
 ##############################################################################
 #
-# _write_major_unit()
+# _write_c_crosses_at()
 #
-# Write the <c:majorUnit> element.
+# Write the <c:crossesAt> element.
 #
-sub _write_major_unit {
+sub _write_c_crosses_at {
 
     my $self = shift;
     my $val  = shift;
 
-    return unless (defined($val));
-
     my @attributes = ( 'val' => $val );
 
-    $self->{_writer}->emptyTag( 'c:majorUnit', @attributes );
-}
-
-
-##############################################################################
-#
-# _write_minor_unit()
-#
-# Write the <c:minorUnit> element.
-#
-sub _write_minor_unit {
-
-    my $self = shift;
-    my $val  = shift;
-
-    return unless (defined($val));
-
-    my @attributes = ( 'val' => $val );
-
-    $self->{_writer}->emptyTag( 'c:minorUnit', @attributes );
+    $self->{_writer}->emptyTag( 'c:crossesAt', @attributes );
 }
 
 
@@ -2386,11 +2402,84 @@ sub _write_major_gridlines {
 sub _write_cross_between {
 
     my $self = shift;
-    my $val  = $self->{_cross_between} // 'between';
+
+    my $val  = $self->{_cross_between} || 'between';
 
     my @attributes = ( 'val' => $val );
 
     $self->{_writer}->emptyTag( 'c:crossBetween', @attributes );
+}
+
+
+##############################################################################
+#
+# _write_c_major_unit()
+#
+# Write the <c:majorUnit> element.
+#
+sub _write_c_major_unit {
+
+    my $self = shift;
+    my $val  = shift;
+
+    return unless $val;
+
+    my @attributes = ( 'val' => $val );
+
+    $self->{_writer}->emptyTag( 'c:majorUnit', @attributes );
+}
+
+
+##############################################################################
+#
+# _write_c_minor_unit()
+#
+# Write the <c:minorUnit> element.
+#
+sub _write_c_minor_unit {
+
+    my $self = shift;
+    my $val  = shift;
+
+    return unless $val;
+
+    my @attributes = ( 'val' => $val );
+
+    $self->{_writer}->emptyTag( 'c:minorUnit', @attributes );
+}
+
+
+##############################################################################
+#
+# _write_c_major_time_unit()
+#
+# Write the <c:majorTimeUnit> element.
+#
+sub _write_c_major_time_unit {
+
+    my $self = shift;
+    my $val = shift || 'days';
+
+    my @attributes = ( 'val' => $val );
+
+    $self->{_writer}->emptyTag( 'c:majorTimeUnit', @attributes );
+}
+
+
+##############################################################################
+#
+# _write_c_minor_time_unit()
+#
+# Write the <c:minorTimeUnit> element.
+#
+sub _write_c_minor_time_unit {
+
+    my $self = shift;
+    my $val = shift || 'days';
+
+    my @attributes = ( 'val' => $val );
+
+    $self->{_writer}->emptyTag( 'c:minorTimeUnit', @attributes );
 }
 
 
@@ -3067,7 +3156,7 @@ sub _write_tx_pr {
 sub _write_marker {
 
     my $self = shift;
-    my $marker = shift // $self->{_default_marker};
+    my $marker = shift || $self->{_default_marker};
 
     return unless $marker;
     return if $marker->{automatic};
@@ -3206,6 +3295,7 @@ sub _write_a_ln {
         $self->_write_a_no_fill();
     }
     else {
+
         # Write the a:solidFill element.
         $self->_write_a_solid_fill( $line );
     }
@@ -3382,7 +3472,7 @@ sub _write_name {
 sub _write_trendline_order {
 
     my $self = shift;
-    my $val  = shift // 2;
+    my $val  = defined $_[0] ? $_[0] : 2;
 
     my @attributes = ( 'val' => $val );
 
@@ -3399,7 +3489,7 @@ sub _write_trendline_order {
 sub _write_period {
 
     my $self = shift;
-    my $val  = shift // 2;
+    my $val  = defined $_[0] ? $_[0] : 2;
 
     my @attributes = ( 'val' => $val );
 
@@ -3442,7 +3532,6 @@ sub _write_backward {
 
     $self->{_writer}->emptyTag( 'c:backward', @attributes );
 }
-
 
 
 ##############################################################################
@@ -3636,6 +3725,9 @@ sub _write_d_lbls {
 
     $self->{_writer}->startTag( 'c:dLbls' );
 
+    # Write the c:dLblPos element.
+    $self->_write_d_lbl_pos( $labels->{position} ) if $labels->{position};
+
     # Write the c:showVal element.
     $self->_write_show_val() if $labels->{value};
 
@@ -3645,9 +3737,14 @@ sub _write_d_lbls {
     # Write the c:showSerName element.
     $self->_write_show_ser_name() if $labels->{series_name};
 
+    # Write the c:showPercent element.
+    $self->_write_show_percent() if $labels->{percentage};
+
+    # Write the c:showLeaderLines element.
+    $self->_write_show_leader_lines() if $labels->{leader_lines};
+
     $self->{_writer}->endTag( 'c:dLbls' );
 }
-
 
 
 ##############################################################################
@@ -3703,6 +3800,57 @@ sub _write_show_ser_name {
 
 ##############################################################################
 #
+# _write_show_percent()
+#
+# Write the <c:showPercent> element.
+#
+sub _write_show_percent {
+
+    my $self = shift;
+    my $val  = 1;
+
+    my @attributes = ( 'val' => $val );
+
+    $self->{_writer}->emptyTag( 'c:showPercent', @attributes );
+}
+
+
+##############################################################################
+#
+# _write_show_leader_lines()
+#
+# Write the <c:showLeaderLines> element.
+#
+sub _write_show_leader_lines {
+
+    my $self = shift;
+    my $val  = 1;
+
+    my @attributes = ( 'val' => $val );
+
+    $self->{_writer}->emptyTag( 'c:showLeaderLines', @attributes );
+}
+
+
+##############################################################################
+#
+# _write_d_lbl_pos()
+#
+# Write the <c:dLblPos> element.
+#
+sub _write_d_lbl_pos {
+
+    my $self = shift;
+    my $val  = shift;
+
+    my @attributes = ( 'val' => $val );
+
+    $self->{_writer}->emptyTag( 'c:dLblPos', @attributes );
+}
+
+
+##############################################################################
+#
 # _write_delete()
 #
 # Write the <c:delete> element.
@@ -3717,6 +3865,26 @@ sub _write_delete {
     my @attributes = ( 'val' => $val );
 
     $self->{_writer}->emptyTag( 'c:delete', @attributes );
+}
+
+
+##############################################################################
+#
+# _write_c_invert_if_negative()
+#
+# Write the <c:invertIfNegative> element.
+#
+sub _write_c_invert_if_negative {
+
+    my $self   = shift;
+    my $invert = shift;
+    my $val    = 1;
+
+    return unless $invert;
+
+    my @attributes = ( 'val' => $val );
+
+    $self->{_writer}->emptyTag( 'c:invertIfNegative', @attributes );
 }
 
 
@@ -3865,6 +4033,10 @@ Set the properties of the series trendline such as linear, polynomial and moving
 
 Set data labels for the series. See the L</CHART FORMATTING> section below.
 
+=item * C<invert_if_negative>
+
+Invert the fill colour for negative values. Usually only applicable to column and bar charts.
+
 =item * C<y2_axis>
 
 Set to true if this series should be plotted against the secondary Y axis.
@@ -3904,15 +4076,96 @@ You can add more than one series to a chart. In fact, some chart types such as C
 
 The C<set_x_axis()> method is used to set properties of the X axis.
 
-    $chart->set_x_axis( name => 'Sample length (m)' );
+    $chart->set_x_axis( name => 'Quarterly results' );
 
 The properties that can be set are:
+
+    name
+    min
+    max
+    minor_unit
+    major_unit
+    crossing
+    reverse
+    log_base
+    label_position
+    title
+    font
+    tick_lbl_skip
+    tick_mark_skip
+    rotation
+    number_format
+
+These are explained below. Some properties are only applicable to value or category axes, as indicated. See L<Value and Category Axes> for an explanation of Excel's distinction between the axis types.
 
 =over
 
 =item * C<name>
 
-Set the name (title or caption) for the axis. The name is displayed below the X axis. The name can also be a formula such as C<=Sheet1!$A$1>. The name property is optional. The default is to have no axis name. The title formating name value can also be used instead of this.
+Set the name (title or caption) for the axis. The name is displayed below the X axis. The C<name> property is optional. The default is to have no axis name. (Applicable to category and value axes).
+
+    $chart->set_x_axis( name => 'Quarterly results' );
+
+The name can also be a formula such as C<=Sheet1!$A$1>.
+
+=item * C<min>
+
+Set the minimum value for the axis range. (Applicable to value axes only).
+
+    $chart->set_x_axis( min => 20 );
+
+=item * C<max>
+
+Set the maximum value for the axis range. (Applicable to value axes only).
+
+    $chart->set_x_axis( max => 80 );
+
+=item * C<minor_unit>
+
+Set the increment of the minor units in the axis range. (Applicable to value axes only).
+
+    $chart->set_x_axis( minor_unit => 0.4 );
+
+=item * C<major_unit>
+
+Set the increment of the major units in the axis range. (Applicable to value axes only).
+
+    $chart->set_x_axis( major_unit => 2 );
+
+=item * C<crossing>
+
+Set the position where the y axis will cross the x axis. (Applicable to category and value axes).
+
+The C<crossing> value can either be the string C<'max'> to set the crossing at the maximum axis value or a numeric value.
+
+    $chart->set_x_axis( crossing => 3 );
+    # or
+    $chart->set_x_axis( crossing => 'max' );
+
+B<For category axes the numeric value must be an integer> to represent the category number that the axis crosses at. For value axes it can have any value associated with the axis.
+
+If crossing is omitted (the default) the crossing will be set automatically by Excel based on the chart data.
+
+=item * C<reverse>
+
+Reverse the order of the axis categories or values. (Applicable to category and value axes).
+
+    $chart->set_x_axis( reverse => 1 );
+
+=item * C<log_base>
+
+Set the log base of the axis range. (Applicable to value axes only).
+
+    $chart->set_x_axis( log_base => 10 );
+
+=item * C<label_position>
+
+Set the "Axis labels" position for the axis. The following positions are available:
+
+    next_to (the default)
+    high
+    low
+    none
 
 =item * C<title>
 
@@ -3922,45 +4175,27 @@ Set the properties of the axis title can be used in place of name above when inc
                                   rotation => 45,
                                   font=>{ typeface=>"Arial", size=>"24" } );
 
-=item * C<reverse>
-
-Reverse the order of the X axis categories or values.
-
-    $chart->set_x_axis( reverse => 1 );
-
 =item * C<font>
 
 Set the properties axis labels such as typeface, size, ... See the L</CHART FORMATTING> section below. 
 
     $chart->set_x_axis( font => { typeface=>"Arial", size=>"24" } );
 
-=item * C<ticklblskip>
+=item * C<tick_lbl_skip>
 
 When the x axis is using string values this can be set to indicate if you want all string labels to be shown:
 
-    $chart->set_x_axis( ticklblskip => 1 );
+    $chart->set_x_axis( tick_lbl_skip => 1 );
 
 or if you want labels to skip some number of labels indicated by a value larger than 1. Value of 2 skips every other label, value of 3 shows one label then skips 2, ....
 
-=item * C<tickmarkskip>
+=item * C<tick_mark_skip>
 
 When the x axis is using string values this can be set to indicate if you want all tick marks on the axis to be shown:
 
-    $chart->set_x_axis( tickmarkskip => 1 );
+    $chart->set_x_axis( tick_mark_skip => 1 );
 
 or if you want the marks to skip some number of marks indicated by a value larger than 1. Value of 2 skips every other mark, value of 3 shows one mark then skips 2, ....
-
-=item * C<majorunit>
-
-When the x axis is a date or numeric value this can be set to indicate the major division between values.
-
-    $chart->set_x_axis( majorunit => 10 );
-
-=item * C<minorunit>
-
-When the x axis is a date or numeric value this can be set to indicate the minor division between values.
-
-    $chart->set_x_axis( minorunit => 1 );
 
 =item * C<rotation>
 
@@ -3968,109 +4203,26 @@ Rotate the label value specified degrees.
 
     $chart->set_x_axis( rotation => 45 );
 
-=item * C<max>
+=item * C<number_format>
 
-Set the max value in chart.
+Set the axis unit number_format.
 
-    $chart->set_x_axis( max => 100 );
-
-=item * C<min>
-
-Set the min value in chart.
-
-    $chart->set_x_axis( min => -100 );
-
-=item * C<crossesat>
-
-Set the value Y axis value the X axis crosses at.
-
-    $chart->set_x_axis( crossesat => -10 );
-
-=item * C<numberformat>
-
-Set the axis unit numberformat.
-
-    $chart->set_x_axis( numberformat => "0.00" );
+    $chart->set_x_axis( number_format => "0.00" );
 
 =back
 
-Additional axis properties such as range, divisions and ticks will be made available in later releases.
+More than one property can be set in a call to C<set_x_axis>:
+
+    $chart->set_x_axis(
+        name => 'Quarterly results',
+        min  => 10,
+        max  => 80,
+    );
 
 
 =head2 set_y_axis()
 
-The C<set_y_axis()> method is used to set properties of the Y axis.
-
-    $chart->set_y_axis( name => 'Sample weight (kg)' );
-
-The properties that can be set are:
-
-=over
-
-=item * C<name>
-
-Set the name (title or caption) for the axis. The name is displayed to the left of the Y axis. The name can also be a formula such as C<=Sheet1!$A$1>. The name property is optional. The default is to have no axis name. The title formating name value can also be used instead of this.
-
-=item * C<title>
-
-Set the properties of the axis title can be used in place of name above when including title font information. See the L</CHART FORMATTING> section below.
-
-   $chart->set_y_axis( title => { name=> "My Chart",
-                                  rotation=> 90,
-                                  font=>{ typeface=>"Arial", size=>"24" } );
-
-=item * C<reverse>
-
-Reverse the order of the Y axis categories or values.
-
-    $chart->set_y_axis( reverse => 1 );
-
-=item * C<font>
-
-Set the properties axis labels such as typeface, size, ... See the L</CHART FORMATTING> section below. 
-
-    $chart->set_y_axis( font => { typeface=>"Arial", size=>"24" } );
-
-=item * C<majorunit>
-
-Set to indicate the major division between values.
-
-    $chart->set_x_axis( majorunit => 10 );
-
-=item * C<minorunit>
-
-Set to indicate the minor division between values.
-
-    $chart->set_x_axis( minorunit => 1 );
-
-=item * C<rotation>
-
-Rotate the label value specified degrees.
-
-    $chart->set_x_axis( rotation => 45 );
-
-=item * C<max>
-
-Set the max value in chart.
-
-    $chart->set_x_axis( max => 100 );
-
-=item * C<min>
-
-Set the min value in chart.
-
-    $chart->set_x_axis( min => -100 );
-
-=item * C<numberformat>
-
-Set the axis unit numberformat.
-
-    $chart->set_x_axis( numberformat => "0.00" );
-
-=back
-
-Additional axis properties such as range, divisions and ticks will be made available in later releases.
-
+The C<set_y_axis()> method is used to set properties of the Y axis. The properties that can be set are the same as for C<set_x_axis>, see above.
 
 =head2 set_y2_axis()
 
@@ -4079,7 +4231,6 @@ The C<set_y2_axis()> method is used to set properties of the secondary Y axis.
     $chart->set_y2_axis( name => 'Sample weight (kg)' );
 
 Supports all the same properties as set_y_axis.
-
 
 =head2 set_title()
 
@@ -4481,6 +4632,9 @@ The following properties can be set for C<data_labels> formats in a chart.
     value
     category
     series_name
+    position
+    percentage
+    leader_lines
 
 
 The C<value> property turns on the I<Value> data label for a series.
@@ -4503,6 +4657,40 @@ The C<series_name> property turns on the I<Series Name> data label for a series.
     $chart->add_series(
         values      => '=Sheet1!$B$1:$B$5',
         data_labels => { series_name => 1 },
+    );
+
+The C<position> property is used to position the data label for a series.
+
+    $chart->add_series(
+        values      => '=Sheet1!$B$1:$B$5',
+        data_labels => { value => 1, position => 'center' },
+    );
+
+Valid positions are:
+
+    center
+    right
+    left
+    top
+    bottom
+    above           # Same as top
+    below           # Same as bottom
+    inside_end      # Pie chart mainly.
+    outside_end     # Pie chart mainly.
+    best_fit        # Pie chart mainly.
+
+The C<percentage> property is used to turn on the I<Percentage> for the data label for a series. It is mainly used for pie charts.
+
+    $chart->add_series(
+        values      => '=Sheet1!$B$1:$B$5',
+        data_labels => { percentage => 1 },
+    );
+
+The C<leader_lines> property is used to turn on  I<Leader Lines> for the data label for a series. It is mainly used for pie charts.
+
+    $chart->add_series(
+        values      => '=Sheet1!$B$1:$B$5',
+        data_labels => { value => 1, leader_lines => 1 },
     );
 
 =head2 title
@@ -4659,6 +4847,21 @@ Here is a complete example that demonstrates some of the available features when
 =end html
 
 
+=head1 Value and Category Axes
+
+Excel differentiates between a chart axis that is used for series B<categories> and an axis that is used for series B<values>.
+
+In the example above the x-axis is the category axis and each of the values is evenly spaced. The y-axis (in this case) is the value axis and points are displayed according to their value.
+
+Since Excel treats the axes differently it also handles their formatting differently and exposed different properties for each.
+
+As such some of C<Excel::Writer::XLSX> axis properties can be set for a value axis, some can be set for a category axis and some properties can be set for both.
+
+For example the C<min> and C<max> properties can only be set for value axes and C<reverse> can be set for both. The type of axis that a property applies to is shown in the C<set_x_axis()> section of the documentation above.
+
+Some charts such as C<Scatter> and C<Stock> have two value axes.
+
+
 =head1 TODO
 
 The chart feature in Excel::Writer::XLSX is under active development. More chart types and features will be added in time.
@@ -4667,11 +4870,11 @@ Features that are on the TODO list and will be added are:
 
 =over
 
-=item * Chart sub-types such as stacked and percent stacked.
+=item * Add more chart sub-types.
 
 =item * Additional formatting options. For now try the C<set_style()> method.
 
-=item * Axis controls, range limits, gridlines.
+=item * More axis controls and gridlines.
 
 =item * 3D charts.
 
@@ -4688,7 +4891,7 @@ John McNamara jmcnamara@cpan.org
 
 =head1 COPYRIGHT
 
-Copyright MM-MMXI, John McNamara.
+Copyright MM-MMXII, John McNamara.
 
 All Rights Reserved. This module is free software. It may be used, redistributed and/or modified under the same terms as Perl itself.
 

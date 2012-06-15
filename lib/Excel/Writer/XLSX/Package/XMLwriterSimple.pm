@@ -6,21 +6,21 @@ package Excel::Writer::XLSX::Package::XMLwriterSimple;
 #
 # Used in conjunction with Excel::Writer::XLSX.
 #
-# Copyright 2000-2011, John McNamara, jmcnamara@cpan.org
+# Copyright 2000-2012, John McNamara, jmcnamara@cpan.org
 #
 # Documentation after __END__
 #
 
 # perltidy with the following options: -mbl=2 -pt=0 -nola
 
-use 5.010000;
+use 5.008002;
 use strict;
 use warnings;
 use Exporter;
 use Carp;
 
 our @ISA     = qw(Exporter);
-our $VERSION = '0.24';
+our $VERSION = '0.47';
 
 #
 # NOTE: this module is a light weight re-implementation of XML::Writer. See
@@ -56,6 +56,7 @@ sub new {
 sub xmlDecl {
 
     my $self = shift;
+    local $\ = undef;    # Protect print from -l on commandline.
 
     print { $self->{_fh} }
       qq(<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n);
@@ -74,6 +75,7 @@ sub startTag {
     my $self       = shift;
     my $tag        = shift;
     my @attributes = @_;
+    local $\ = undef;    # Protect print from -l on commandline.
 
     print { $self->{_fh} } "<$tag";
 
@@ -99,6 +101,7 @@ sub endTag {
 
     my $self = shift;
     my $tag  = shift;
+    local $\ = undef;    # Protect print from -l on commandline.
 
     print { $self->{_fh} } "</$tag>";
 }
@@ -115,6 +118,7 @@ sub emptyTag {
     my $self       = shift;
     my $tag        = shift;
     my @attributes = @_;
+    local $\ = undef;    # Protect print from -l on commandline.
 
     print { $self->{_fh} } "<$tag";
 
@@ -145,6 +149,7 @@ sub dataElement {
     my $tag        = shift;
     my $data       = shift;
     my @attributes = @_;
+    local $\ = undef;    # Protect print from -l on commandline.
 
     print { $self->{_fh} } "<$tag";
 
@@ -174,6 +179,7 @@ sub characters {
 
     my $self = shift;
     my $data = shift;
+    local $\ = undef;    # Protect print from -l on commandline.
 
     $data = _escape_xml_chars( $data );
 
@@ -190,6 +196,7 @@ sub characters {
 sub end {
 
     my $self = shift;
+    local $\ = undef;    # Protect print from -l on commandline.
 
     print { $self->{_fh} } "\n";
 }
@@ -217,7 +224,7 @@ sub getOutput {
 #
 sub _escape_xml_chars {
 
-    my $str = shift // '';
+    my $str = defined $_[0] ? $_[0] : '';
 
     return $str if $str !~ m/[&<>"]/;
 
@@ -274,7 +281,7 @@ John McNamara jmcnamara@cpan.org
 
 =head1 COPYRIGHT
 
-© MM-MMXI, John McNamara.
+© MM-MMXII, John McNamara.
 
 All Rights Reserved. This module is free software. It may be used, redistributed and/or modified under the same terms as Perl itself.
 

@@ -8,21 +8,21 @@ package Excel::Writer::XLSX::Chart::Bar;
 #
 # See formatting note in Excel::Writer::XLSX::Chart.
 #
-# Copyright 2000-2011, John McNamara, jmcnamara@cpan.org
+# Copyright 2000-2012, John McNamara, jmcnamara@cpan.org
 #
 # Documentation after __END__
 #
 
 # perltidy with the following options: -mbl=2 -pt=0 -nola
 
-use 5.010000;
+use 5.008002;
 use strict;
 use warnings;
 use Carp;
 use Excel::Writer::XLSX::Chart;
 
 our @ISA     = qw(Excel::Writer::XLSX::Chart);
-our $VERSION = '0.24';
+our $VERSION = '0.47';
 
 
 ###############################################################################
@@ -35,8 +35,9 @@ sub new {
     my $class = shift;
     my $self  = Excel::Writer::XLSX::Chart->new( @_ );
 
-    $self->{_subtype}           = $self->{_subtype} // 'clustered';
+    $self->{_subtype}           = $self->{_subtype} || 'clustered';
     $self->{_cat_axis_position} = 'l';
+    $self->{_val_axis_position} = 'b';
     $self->{_horiz_val_axis}    = 0;
     $self->{_horiz_cat_axis}    = 1;
 
@@ -55,6 +56,11 @@ sub new {
 sub _write_chart_type {
 
     my $self = shift;
+
+    # Reverse X and Y axes for Bar charts.
+    my $tmp = $self->{_y_axis};
+    $self->{_y_axis} = $self->{_x_axis};
+    $self->{_x_axis} = $tmp;
 
     # Write the c:barChart element.
     $self->_write_bar_chart();
@@ -75,22 +81,6 @@ sub _write_bar_chart {
     $subtype = 'percentStacked' if $subtype eq 'percent_stacked';
 
     for (my $plane=0;$plane<=$#{$self->{_series}};$plane++) {
-        # Reverse meaning of X and Y axis for Bar charts.
-        my $name         = $self->{_y_axis}[$plane]{_name};
-        my $name_formula = $self->{_y_axis}[$plane]{_formula};
-        my $data_id      = $self->{_y_axis}[$plane]{_data_id};
-        my $reverse      = $self->{_y_axis}[$plane]{_reverse};
-    
-        $self->{_y_axis}[$plane]{_name}    = $self->{_x_axis}[$plane]{_name};
-        $self->{_y_axis}[$plane]{_formula} = $self->{_x_axis}[$plane]{_formula};
-        $self->{_y_axis}[$plane]{_data_id} = $self->{_x_axis}[$plane]{_data_id};
-        $self->{_y_axis}[$plane]{_reverse} = $self->{_x_axis}[$plane]{_reverse};
-        $self->{_y_axis}[$plane]{_position}= 'b';
-    
-        $self->{_x_axis}[$plane]{_name}    = $name;
-        $self->{_x_axis}[$plane]{_formula} = $name_formula;
-        $self->{_x_axis}[$plane]{_data_id} = $data_id;
-        $self->{_x_axis}[$plane]{_reverse} = $reverse;
 
         $self->{_writer}->startTag( 'c:barChart' );
 
@@ -159,7 +149,6 @@ sub _write_series {
     $self->_write_axis_id( $self->{_axis_ids}[$plane][1] );
 }
 
-
 1;
 
 
@@ -218,7 +207,14 @@ These methods are explained in detail in L<Excel::Writer::XLSX::Chart>. Class sp
 
 =head1 Bar Chart Methods
 
-There aren't currently any bar chart specific methods. See the TODO section of L<Excel::Writer::XLSX::Chart>.
+The C<Bar> chart module also supports the following sub-types:
+
+    stacked
+    percent_stacked
+
+These can be specified at creation time via the C<add_chart()> Worksheet method:
+
+    my $chart = $workbook->add_chart( type => 'bar', subtype => 'stacked' );
 
 =head1 EXAMPLE
 
@@ -293,7 +289,7 @@ John McNamara jmcnamara@cpan.org
 
 =head1 COPYRIGHT
 
-Copyright MM-MMXI, John McNamara.
+Copyright MM-MMXII, John McNamara.
 
 All Rights Reserved. This module is free software. It may be used, redistributed and/or modified under the same terms as Perl itself.
 

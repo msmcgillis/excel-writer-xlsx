@@ -8,21 +8,21 @@ package Excel::Writer::XLSX::Chart::Scatter;
 #
 # See formatting note in Excel::Writer::XLSX::Chart.
 #
-# Copyright 2000-2011, John McNamara, jmcnamara@cpan.org
+# Copyright 2000-2012, John McNamara, jmcnamara@cpan.org
 #
 # Documentation after __END__
 #
 
 # perltidy with the following options: -mbl=2 -pt=0 -nola
 
-use 5.010000;
+use 5.008002;
 use strict;
 use warnings;
 use Carp;
 use Excel::Writer::XLSX::Chart;
 
 our @ISA     = qw(Excel::Writer::XLSX::Chart);
-our $VERSION = '0.24';
+our $VERSION = '0.47';
 
 
 ###############################################################################
@@ -35,6 +35,7 @@ sub new {
     my $class = shift;
     my $self  = Excel::Writer::XLSX::Chart->new( @_ );
 
+    $self->{_subtype} = $self->{_subtype} || 'marker_only';
     $self->{_cross_between} = 'midCat';
     $self->{_horiz_val_axis}    = 0;
 
@@ -66,7 +67,16 @@ sub _write_chart_type {
 #
 sub _write_scatter_chart {
 
-    my $self = shift;
+    my $self    = shift;
+    my $style   = 'lineMarker';
+    my $subtype = $self->{_subtype};
+
+    # Set the user defined chart subtype.
+    $style = 'lineMarker'   if $subtype eq 'marker_only';
+    $style = 'lineMarker'   if $subtype eq 'straight_with_markers';
+    $style = 'lineMarker'   if $subtype eq 'straight';
+    $style = 'smoothMarker' if $subtype eq 'smooth_with_markers';
+    $style = 'smoothMarker' if $subtype eq 'smooth';
 
     for (my $plane=0;$plane<=$#{$self->{_series}};$plane++) {
 
@@ -76,13 +86,12 @@ sub _write_scatter_chart {
         $self->{_writer}->startTag( 'c:scatterChart' );
 
         # Write the c:scatterStyle element.
-        $self->_write_scatter_style();
+        $self->_write_scatter_style( $style );
 
         # Write the series elements.
         $self->_write_series($plane);
 
         $self->{_writer}->endTag( 'c:scatterChart' );
-
     }
 }
 
@@ -129,6 +138,9 @@ sub _write_ser {
     # Write the c:yVal element.
     $self->_write_y_val( $series );
 
+    # Write the c:smooth element.
+    $self->_write_c_smooth();
+
     $self->{_writer}->endTag( 'c:ser' );
 }
 
@@ -157,12 +169,11 @@ sub _write_plot_area {
     for (my $plane=0;$plane<=$#{$self->{_series}};$plane++) {
 
         # Write the c:catAx element.
-        $self->_write_cat_val_axis( $plane , 'b', 1);
+        $self->_write_cat_val_axis( $plane, 'b', 1);
 
         # Write the c:catAx element.
-        $self->{_y_axis}[$plane]{_position}='l';
         $self->{_horiz_val_axis} = 1;
-        $self->_write_val_axis( $plane );
+        $self->_write_val_axis( $plane, 'l' );
 
     }
 
@@ -249,7 +260,7 @@ sub _write_y_val {
 sub _write_scatter_style {
 
     my $self = shift;
-    my $val  = 'lineMarker';
+    my $val  = shift;
 
     my @attributes = ( 'val' => $val );
 
@@ -259,26 +270,70 @@ sub _write_scatter_style {
 
 ##############################################################################
 #
+# _write_c_smooth()
+#
+# Write the <c:smooth> element.
+#
+sub _write_c_smooth {
+
+    my $self    = shift;
+    my $subtype = $self->{_subtype};
+    my $val     = 1;
+
+    return unless $subtype =~ /smooth/;
+
+    my @attributes = ( 'val' => $val );
+
+    $self->{_writer}->emptyTag( 'c:smooth', @attributes );
+}
+
+
+##############################################################################
+#
 # _modify_series_formatting()
 #
-# Add default formatting to the series data.
+# Add default formatting to the series data unless it has already been
+# specified by the user.
 #
 sub _modify_series_formatting {
 
     my $self  = shift;
     my $plane = shift;
+    my $subtype = $self->{_subtype};
 
-    my $index = 0;
-    for my $series ( @{ $self->{_series}[$plane] } ) {
-        if ( !$series->{_line}->{_defined} ) {
-            $series->{_line} = {
-                width    => 2.25,
-                none     => 1,
-                _defined => 1,
-            };
+    # The default scatter style "markers only" requires a line type.
+    if ( $subtype eq 'marker_only' ) {
+
+        # Go through each series and define default values.
+        for my $series ( @{ $self->{_series}[$plane] } ) {
+
+            # Set a line type unless there is already a user defined type.
+            if ( !$series->{_line}->{_defined} ) {
+                $series->{_line} = {
+                    width    => 2.25,
+                    none     => 1,
+                    _defined => 1,
+                };
+            }
         }
-        $index++;
     }
+
+    # Turn markers off for subtypes that don't have them.
+    if ( $subtype !~ /marker/ ) {
+
+        # Go through each series and define default values.
+        for my $series ( @{ $self->{_series}[$plane] } ) {
+
+            # Set a marker type unless there is already a user defined type.
+            if ( !$series->{_marker}->{_defined} ) {
+                $series->{_marker} = {
+                    type     => 'none',
+                    _defined => 1,
+                };
+            }
+        }
+    }
+
 }
 
 
@@ -340,7 +395,20 @@ These methods are explained in detail in L<Excel::Writer::XLSX::Chart>. Class sp
 
 =head1 Scatter Chart Methods
 
-There aren't currently any scatter chart specific methods. See the TODO section of L<Excel::Writer::XLSX::Chart>.
+The C<Scatter> chart module also supports the following sub-types:
+
+    markers_only (the default)
+    straight_with_markers
+    straight
+    smooth_with_markers
+    smooth
+
+These can be specified at creation time via the C<add_chart()> Worksheet method:
+
+    my $chart = $workbook->add_chart(
+        type    => 'scatter',
+        subtype => 'straight_with_markers'
+    );
 
 =head1 EXAMPLE
 
@@ -415,7 +483,7 @@ John McNamara jmcnamara@cpan.org
 
 =head1 COPYRIGHT
 
-Copyright MM-MMXI, John McNamara.
+Copyright MM-MMXII, John McNamara.
 
 All Rights Reserved. This module is free software. It may be used, redistributed and/or modified under the same terms as Perl itself.
 

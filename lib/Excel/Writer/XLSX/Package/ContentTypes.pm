@@ -7,21 +7,21 @@ package Excel::Writer::XLSX::Package::ContentTypes;
 #
 # Used in conjunction with Excel::Writer::XLSX
 #
-# Copyright 2000-2011, John McNamara, jmcnamara@cpan.org
+# Copyright 2000-2012, John McNamara, jmcnamara@cpan.org
 #
 # Documentation after __END__
 #
 
 # perltidy with the following options: -mbl=2 -pt=0 -nola
 
-use 5.010000;
+use 5.008002;
 use strict;
 use warnings;
 use Carp;
 use Excel::Writer::XLSX::Package::XMLwriter;
 
 our @ISA     = qw(Excel::Writer::XLSX::Package::XMLwriter);
-our $VERSION = '0.24';
+our $VERSION = '0.47';
 
 
 ###############################################################################
@@ -141,7 +141,7 @@ sub _add_override {
 #
 sub _add_worksheet_name {
 
-    my $self       = shift;
+    my $self           = shift;
     my $worksheet_name = shift;
 
     $worksheet_name = "/xl/worksheets/$worksheet_name.xml";
@@ -159,7 +159,7 @@ sub _add_worksheet_name {
 #
 sub _add_chartsheet_name {
 
-    my $self       = shift;
+    my $self            = shift;
     my $chartsheet_name = shift;
 
     $chartsheet_name = "/xl/chartsheets/$chartsheet_name.xml";
@@ -182,8 +182,7 @@ sub _add_chart_name {
 
     $chart_name = "/xl/charts/$chart_name.xml";
 
-    $self->_add_override( $chart_name,
-        $app_document . 'drawingml.chart+xml' );
+    $self->_add_override( $chart_name, $app_document . 'drawingml.chart+xml' );
 }
 
 
@@ -195,15 +194,45 @@ sub _add_chart_name {
 #
 sub _add_drawing_name {
 
-    my $self       = shift;
+    my $self         = shift;
     my $drawing_name = shift;
 
     $drawing_name = "/xl/drawings/$drawing_name.xml";
 
-    $self->_add_override( $drawing_name,
-        $app_document . 'drawing+xml' );
+    $self->_add_override( $drawing_name, $app_document . 'drawing+xml' );
 }
 
+
+###############################################################################
+#
+# _add_vml_name()
+#
+# Add the name of a VML drawing to the ContentTypes defaults.
+#
+sub _add_vml_name {
+
+    my $self = shift;
+
+    $self->_add_default( 'vml', $app_document . 'vmlDrawing' );
+}
+
+
+###############################################################################
+#
+# _add_comment_name()
+#
+# Add the name of a comment to the ContentTypes overrides.
+#
+sub _add_comment_name {
+
+    my $self         = shift;
+    my $comment_name = shift;
+
+    $comment_name = "/xl/$comment_name.xml";
+
+    $self->_add_override( $comment_name,
+        $app_document . 'spreadsheetml.comments+xml' );
+}
 
 ###############################################################################
 #
@@ -392,7 +421,7 @@ John McNamara jmcnamara@cpan.org
 
 =head1 COPYRIGHT
 
-© MM-MMXI, John McNamara.
+© MM-MMXII, John McNamara.
 
 All Rights Reserved. This module is free software. It may be used, redistributed and/or modified under the same terms as Perl itself.
 

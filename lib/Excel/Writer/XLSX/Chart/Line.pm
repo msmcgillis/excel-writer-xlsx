@@ -22,7 +22,7 @@ use Carp;
 use Excel::Writer::XLSX::Chart;
 
 our @ISA     = qw(Excel::Writer::XLSX::Chart);
-our $VERSION = '0.47';
+our $VERSION = '0.51';
 
 
 ###############################################################################
@@ -53,7 +53,7 @@ sub _write_chart_type {
     my $self = shift;
 
     # Write the c:lineChart element.
-    $self->_write_line_chart();
+    $self->_write_line_chart( @_ );
 }
 
 
@@ -66,20 +66,33 @@ sub _write_chart_type {
 sub _write_line_chart {
 
     my $self = shift;
+    my %args = @_;
 
-    for (my $plane=0;$plane<=$#{$self->{_series}};$plane++) {
-
-        $self->{_writer}->startTag( 'c:lineChart' );
-
-        # Write the c:grouping element.
-        $self->_write_grouping( 'standard' );
-
-        # Write the series elements.
-        $self->_write_series( $plane );
-
-        $self->{_writer}->endTag( 'c:lineChart' );
-
+    my @series;
+    if ( $args{primary_axes} ) {
+        @series = $self->_get_primary_axes_series;
     }
+    else {
+        @series = $self->_get_secondary_axes_series;
+    }
+
+    return unless scalar @series;
+
+    $self->{_writer}->startTag( 'c:lineChart' );
+
+    # Write the c:grouping element.
+    $self->_write_grouping( 'standard' );
+
+    # Write the series elements.
+    $self->_write_series( $_ ) for @series;
+
+    # Write the c:marker element.
+    $self->_write_marker_value();
+
+    # Write the c:axId elements
+    $self->_write_axis_ids( %args );
+
+    $self->{_writer}->endTag( 'c:lineChart' );
 }
 
 

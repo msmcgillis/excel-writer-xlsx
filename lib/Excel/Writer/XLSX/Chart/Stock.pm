@@ -22,7 +22,7 @@ use Carp;
 use Excel::Writer::XLSX::Chart;
 
 our @ISA     = qw(Excel::Writer::XLSX::Chart);
-our $VERSION = '0.47';
+our $VERSION = '0.51';
 
 
 ###############################################################################
@@ -34,6 +34,7 @@ sub new {
 
     my $class = shift;
     my $self  = Excel::Writer::XLSX::Chart->new( @_ );
+    $self->{_show_crosses} = 0;
 
     bless $self, $class;
     return $self;
@@ -51,7 +52,7 @@ sub _write_chart_type {
     my $self = shift;
 
     # Write the c:stockChart element.
-    $self->_write_stock_chart();
+    $self->_write_stock_chart( @_ );
 }
 
 
@@ -60,58 +61,41 @@ sub _write_chart_type {
 # _write_stock_chart()
 #
 # Write the <c:stockChart> element.
+# Overridden to add hi_low_lines(). TODO. Refactor up into the SUPER class.
 #
 sub _write_stock_chart {
 
     my $self = shift;
+    my %args = @_;
 
-    for (my $plane=0;$plane<=$#{$self->{_series}};$plane++) {
-
-        # Add default formatting to the series data.
-        $self->_modify_series_formatting($plane);
-
-        $self->{_writer}->startTag( 'c:stockChart' );
-
-        # Write the series elements.
-        $self->_write_series($plane);
-
-        $self->{_writer}->endTag( 'c:stockChart' );
-
+    my @series;
+    if ( $args{primary_axes} ) {
+        @series = $self->_get_primary_axes_series;
     }
-}
-
-
-##############################################################################
-#
-# _write_series()
-#
-# Over-ridden to add hi_low_lines(). TODO. Refactor up into the SUPER class.
-#
-# Write the series elements.
-#
-sub _write_series {
-
-    my $self = shift;
-    my $plane = shift;
-
-    # Write each series with subelements.
-    for my $series ( @{ $self->{_series}[$plane] } ) {
-        $self->_write_ser( $series );
+    else {
+        @series = $self->_get_secondary_axes_series;
     }
+
+    return unless scalar @series;
+
+    # Add default formatting to the series data.
+    $self->_modify_series_formatting();
+
+    $self->{_writer}->startTag( 'c:stockChart' );
+
+    # Write the series elements.
+    $self->_write_ser( $_ ) for @series;
 
     # Write the c:hiLowLines element.
-    $self->_write_hi_low_lines();
+    $self->_write_hi_low_lines() if $args{primary_axes};
 
     # Write the c:marker element.
     $self->_write_marker_value();
 
-    # Generate the axis ids.
-    $self->_add_axis_id($plane);
-    $self->_add_axis_id($plane);
+    # Write the c:axId elements
+    $self->_write_axis_ids( %args );
 
-    # Write the c:axId element.
-    $self->_write_axis_id( $self->{_axis_ids}[$plane][0] );
-    $self->_write_axis_id( $self->{_axis_ids}[$plane][1] );
+    $self->{_writer}->endTag( 'c:stockChart' );
 }
 
 
@@ -119,7 +103,7 @@ sub _write_series {
 #
 # _write_plot_area()
 #
-# Write the <c:plotArea> element.
+# Overridden to use _write_date_axis() instead of _write_cat_axis().
 #
 sub _write_plot_area {
 
@@ -130,18 +114,37 @@ sub _write_plot_area {
     # Write the c:layout element.
     $self->_write_layout();
 
-    # Write the subclass chart type element.
-    $self->_write_chart_type();
+    # TODO: (for JMCNAMARA todo :)
+    # foreach my $chart_type (@chart_types)
 
-    for (my $plane=0;$plane<=$#{$self->{_series}};$plane++) {
+    # Write the subclass chart type elements for primary and secondary axes
+    $self->_write_chart_type( primary_axes => 1 );
+    $self->_write_chart_type( primary_axes => 0 );
 
-        # Write the c:dateAx element.
-        $self->_write_date_axis($plane);
+    # Write c:catAx and c:valAx elements for series using primary axes
+    $self->_write_date_axis(
+        x_axis   => $self->{_x_axis},
+        y_axis   => $self->{_y_axis},
+        axis_ids => $self->{_axis_ids}
+    );
+    $self->_write_val_axis(
+        x_axis   => $self->{_x_axis},
+        y_axis   => $self->{_y_axis},
+        axis_ids => $self->{_axis_ids}
+    );
 
-        # Write the c:catAx element.
-        $self->_write_val_axis($plane);
+    # Write c:valAx and c:catAx elements for series using secondary axes
+    $self->_write_val_axis(
+        x_axis   => $self->{_x2_axis},
+        y_axis   => $self->{_y2_axis},
+        axis_ids => $self->{_axis2_ids}
+    );
+    $self->_write_date_axis(
+        x_axis   => $self->{_x2_axis},
+        y_axis   => $self->{_y2_axis},
+        axis_ids => $self->{_axis2_ids}
+    );
 
-    }
 
     $self->{_writer}->endTag( 'c:plotArea' );
 }
@@ -155,11 +158,10 @@ sub _write_plot_area {
 #
 sub _modify_series_formatting {
 
-    my $self  = shift;
-    my $plane = shift;
+    my $self = shift;
 
     my $index = 0;
-    for my $series ( @{ $self->{_series}[$plane] } ) {
+    for my $series ( @{ $self->{_series} } ) {
         if ( $index % 4 != 3 ) {
             if ( !$series->{_line}->{_defined} ) {
                 $series->{_line} = {

@@ -22,7 +22,7 @@ use Carp;
 use Excel::Writer::XLSX::Chart;
 
 our @ISA     = qw(Excel::Writer::XLSX::Chart);
-our $VERSION = '0.47';
+our $VERSION = '0.51';
 
 
 ###############################################################################
@@ -35,7 +35,9 @@ sub new {
     my $class = shift;
     my $self  = Excel::Writer::XLSX::Chart->new( @_ );
 
+    $self->{_subtype}       = $self->{_subtype} || 'standard';
     $self->{_cross_between} = 'midCat';
+    $self->{_show_crosses}  = 0;
 
     bless $self, $class;
     return $self;
@@ -53,7 +55,7 @@ sub _write_chart_type {
     my $self = shift;
 
     # Write the c:areaChart element.
-    $self->_write_area_chart();
+    $self->_write_area_chart( @_ );
 }
 
 
@@ -66,20 +68,37 @@ sub _write_chart_type {
 sub _write_area_chart {
 
     my $self = shift;
+    my %args = @_;
 
-    for (my $plane=0;$plane<=$#{$self->{_series}};$plane++) {
-
-        $self->{_writer}->startTag( 'c:areaChart' );
-
-        # Write the c:grouping element.
-        $self->_write_grouping( 'standard' );
-
-        # Write the series elements.
-        $self->_write_series($plane);
-
-        $self->{_writer}->endTag( 'c:areaChart' );
-
+    my @series;
+    if ( $args{primary_axes} ) {
+        @series = $self->_get_primary_axes_series;
     }
+    else {
+        @series = $self->_get_secondary_axes_series;
+    }
+
+    return unless scalar @series;
+
+    my $subtype = $self->{_subtype};
+
+    $subtype = 'percentStacked' if $subtype eq 'percent_stacked';
+
+    $self->{_writer}->startTag( 'c:areaChart' );
+
+    # Write the c:grouping element.
+    $self->_write_grouping( $subtype );
+
+    # Write the series elements.
+    $self->_write_series( $_ ) for @series;
+
+    # Write the c:marker element.
+    $self->_write_marker_value();
+
+    # Write the c:axId elements
+    $self->_write_axis_ids( %args );
+
+    $self->{_writer}->endTag( 'c:areaChart' );
 }
 
 
@@ -139,9 +158,17 @@ Once the object is created it can be configured via the following methods that a
 
 These methods are explained in detail in L<Excel::Writer::XLSX::Chart>. Class specific methods or settings, if any, are explained below.
 
-=head1 Area Chart Methods
+=head1 Area Chart Subtypes
 
-There aren't currently any area chart specific methods. See the TODO section of L<Excel::Writer::XLSX::Chart>.
+
+The C<Area> chart module also supports the following sub-types:
+
+    stacked
+    percent_stacked
+
+These can be specified at creation time via the C<add_chart()> Worksheet method:
+
+    my $chart = $workbook->add_chart( type => 'area', subtype => 'stacked' );
 
 =head1 EXAMPLE
 

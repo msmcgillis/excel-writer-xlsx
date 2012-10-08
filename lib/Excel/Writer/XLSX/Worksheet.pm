@@ -19,6 +19,7 @@ use strict;
 use warnings;
 use Carp;
 use File::Temp 'tempfile';
+use List::Util qw(max min);
 use Excel::Writer::XLSX::Format;
 use Excel::Writer::XLSX::Drawing;
 use Excel::Writer::XLSX::Package::XMLwriter;
@@ -26,7 +27,7 @@ use Excel::Writer::XLSX::Utility
   qw(xl_cell_to_rowcol xl_rowcol_to_cell xl_col_to_name xl_range);
 
 our @ISA     = qw(Excel::Writer::XLSX::Package::XMLwriter);
-our $VERSION = '0.47';
+our $VERSION = '0.51';
 
 
 ###############################################################################
@@ -57,10 +58,11 @@ sub new {
     $self->{_str_total}    = $_[4];
     $self->{_str_unique}   = $_[5];
     $self->{_str_table}    = $_[6];
-    $self->{_1904}         = $_[7];
-    $self->{_palette}      = $_[8];
-    $self->{_optimization} = $_[9] || 0;
-    $self->{_tempdir}      = $_[10];
+    $self->{_table_count}  = $_[7];
+    $self->{_1904}         = $_[8];
+    $self->{_palette}      = $_[9];
+    $self->{_optimization} = $_[10] || 0;
+    $self->{_tempdir}      = $_[11];
 
     $self->{_ext_sheets} = [];
     $self->{_fileclosed} = 0;
@@ -149,7 +151,7 @@ sub new {
 
     $self->{prev_col} = -1;
 
-    $self->{_table} = [];
+    $self->{_table} = {};
     $self->{_merge} = [];
 
     $self->{_has_comments}     = 0;
@@ -170,14 +172,21 @@ sub new {
     $self->{_col_size_changed} = 0;
     $self->{_row_size_changed} = 0;
 
+    $self->{_last_shape_id}          = 1;
+    $self->{_rel_count}              = 0;
     $self->{_hlink_count}            = 0;
     $self->{_hlink_refs}             = [];
     $self->{_external_hyper_links}   = [];
     $self->{_external_drawing_links} = [];
     $self->{_external_comment_links} = [];
+    $self->{_external_vml_links}     = [];
+    $self->{_external_table_links}   = [];
     $self->{_drawing_links}          = [];
     $self->{_charts}                 = [];
     $self->{_images}                 = [];
+    $self->{_tables}                 = [];
+    $self->{_shapes}                 = [];
+    $self->{_shape_hash}             = {};
     $self->{_drawing}                = 0;
 
     $self->{_rstring}      = '';
@@ -309,6 +318,9 @@ sub _assemble_xml_file {
 
     # Write the legacyDrawing element.
     $self->_write_legacy_drawing();
+
+    # Write the tableParts element.
+    $self->_write_table_parts();
 
     # Write the worksheet extension storage.
     #$self->_write_ext_lst();
@@ -2051,7 +2063,7 @@ sub write_number {
         $self->_write_single_row( $row );
     }
 
-    $self->{_table}->[$row]->[$col] = [ $type, $num, $xf ];
+    $self->{_table}->{$row}->{$col} = [ $type, $num, $xf ];
 
     return 0;
 }
@@ -2109,7 +2121,7 @@ sub write_string {
         $self->_write_single_row( $row );
     }
 
-    $self->{_table}->[$row]->[$col] = [ $type, $index, $xf ];
+    $self->{_table}->{$row}->{$col} = [ $type, $index, $xf ];
 
     return $str_error;
 }
@@ -2162,6 +2174,7 @@ sub write_rich_string {
     # Create a temp XML::Writer object and use it to write the rich string
     # XML to a string.
     open my $str_fh, '>', \$str or die "Failed to open filehandle: $!";
+    binmode $str_fh, ':utf8';
 
     my $writer = Excel::Writer::XLSX::Package::XMLwriterSimple->new( $str_fh );
 
@@ -2257,7 +2270,7 @@ sub write_rich_string {
         $self->_write_single_row( $row );
     }
 
-    $self->{_table}->[$row]->[$col] = [ $type, $index, $xf ];
+    $self->{_table}->{$row}->{$col} = [ $type, $index, $xf ];
 
     return 0;
 }
@@ -2307,7 +2320,7 @@ sub write_blank {
         $self->_write_single_row( $row );
     }
 
-    $self->{_table}->[$row]->[$col] = [ $type, undef, $xf ];
+    $self->{_table}->{$row}->{$col} = [ $type, undef, $xf ];
 
     return 0;
 }
@@ -2360,7 +2373,7 @@ sub write_formula {
         $self->_write_single_row( $row );
     }
 
-    $self->{_table}->[$row]->[$col] = [ $type, $formula, $xf, $value ];
+    $self->{_table}->{$row}->{$col} = [ $type, $formula, $xf, $value ];
 
     return 0;
 }
@@ -2430,8 +2443,19 @@ sub write_array_formula {
         $self->_write_single_row( $row );
     }
 
-    $self->{_table}->[$row1]->[$col1] =
+    $self->{_table}->{$row1}->{$col1} =
       [ $type, $formula, $xf, $range, $value ];
+
+
+    # Pad out the rest of the area with formatted zeroes.
+    if ( !$self->{_optimization} ) {
+        for my $row ( $row1 .. $row2 ) {
+            for my $col ( $col1 .. $col2 ) {
+                next if $row == $row1 and $col == $col1;
+                $self->write_number( $row, $col, 0, $xf );
+            }
+        }
+    }
 
     return 0;
 }
@@ -2474,7 +2498,8 @@ sub outline_settings {
 #         -1 : insufficient number of arguments
 #         -2 : row or column out of range
 #         -3 : long string truncated to 32767 chars
-#         -4 : url contains whitespace
+#         -4 : URL longer than 255 characters
+#         -5 : Exceeds limit of 65_530 urls per worksheet
 #
 sub write_url {
 
@@ -2544,12 +2569,8 @@ sub write_url {
     # different characteristics that we have to account for.
     if ( $link_type == 1 ) {
 
-        # Check for white space in url.
-        if ($url =~ /[\s\x00]/) {
-            carp "White space in url '$url' is not allowed by Excel";
-            return -4;
-
-        }
+        # Substiture white space in url.
+        $url =~ s/[\s\x00]/%20/;
 
         # Ordinary URL style external links don't have a "location" string.
         $str = undef;
@@ -2559,24 +2580,50 @@ sub write_url {
         # External Workbook links need to be modified into the right format.
         # The URL will look something like 'c:\temp\file.xlsx#Sheet!A1'.
         # We need the part to the left of the # as the URL and the part to
-        # the right as the "location" string (if it exists)
+        # the right as the "location" string (if it exists).
         ( $url, $str ) = split /#/, $url;
 
         # Add the file:/// URI to the $url if non-local.
-        if ( $url =~ m{[\\/]} && $url !~ m{^\.\.} ) {
+        if (
+            $url =~ m{[:]}         # Windows style "C:/" link.
+            || $url =~ m{^\\\\}    # Network share.
+          )
+        {
             $url = 'file:///' . $url;
         }
+
+        # Convert a ./dir/file.xlsx link to dir/file.xlsx.
+        $url =~ s{^.\\}{};
 
         # Treat as a default external link now that the data has been modified.
         $link_type = 1;
     }
+
+    # Excel limits escaped URL to 255 characters.
+    if ( length $url > 255 ) {
+        carp "Ignoring URL '$url' > 255 characters since it exceeds Excel's "
+          . "limit for URLS. See LIMITATIONS section of the "
+          . "Excel::Writer::XLSX documentation.";
+        return -4;
+    }
+
+    # Check the limit of URLS per worksheet.
+    $self->{_hlink_count}++;
+
+    if ( $self->{_hlink_count} > 65_530 ) {
+        carp "Ignoring URL '$url' since it exceeds Excel's limit of 65,530 "
+          . "URLS per worksheet. See LIMITATIONS section of the "
+          . "Excel::Writer::XLSX documentation.";
+        return -5;
+    }
+
 
     # Write previous row if in in-line string optimization mode.
     if ( $self->{_optimization} == 1 && $row > $self->{_previous_row}) {
         $self->_write_single_row( $row );
     }
 
-    $self->{_table}->[$row]->[$col] =
+    $self->{_table}->{$row}->{$col} =
 
       # 0      1       2    3           4     5     6
       [ $type, $index, $xf, $link_type, $url, $str, $tip ];
@@ -2631,7 +2678,7 @@ sub write_date_time {
         $self->_write_single_row( $row );
     }
 
-    $self->{_table}->[$row]->[$col] = [ $type, $date_time, $xf ];
+    $self->{_table}->{$row}->{$col} = [ $type, $date_time, $xf ];
 
     return $str_error;
 }
@@ -3399,7 +3446,9 @@ sub conditional_formatting {
     );
 
     # Check for valid criteria types.
-    if ( exists $criteria_type{ lc( $param->{criteria} ) } ) {
+    if ( defined $param->{criteria}
+        && exists $criteria_type{ lc( $param->{criteria} ) } )
+    {
         $param->{criteria} = $criteria_type{ lc( $param->{criteria} ) };
     }
 
@@ -3660,9 +3709,325 @@ sub conditional_formatting {
 
 ###############################################################################
 #
+# add_table()
+#
+# Add an Excel table to a worksheet.
+#
+sub add_table {
+
+    my $self       = shift;
+    my $user_range = '';
+    my %table;
+    my @col_formats;
+
+    # We would need to order the write statements very carefully within this
+    # function to support optimisation mode. Disable add_table() when it is
+    # on for now.
+    if ( $self->{_optimization} == 1 ) {
+        carp "add_table() isn't supported when set_optimization() is on";
+        return -1;
+    }
+
+    # Check for a cell reference in A1 notation and substitute row and column
+    if ( @_ && $_[0] =~ /^\D/ ) {
+        @_ = $self->_substitute_cellref( @_ );
+    }
+
+    # Check for a valid number of args.
+    if ( @_ < 4 ) {
+        carp "Not enough parameters to add_table()";
+        return -1;
+    }
+
+    my ( $row1, $col1, $row2, $col2 ) = @_;
+
+    # Check that row and col are valid without storing the values.
+    return -2 if $self->_check_dimensions( $row1, $col1, 1, 1 );
+    return -2 if $self->_check_dimensions( $row2, $col2, 1, 1 );
+
+
+    # The final hashref contains the validation parameters.
+    my $param = $_[4] || {};
+
+    # Check that the last parameter is a hash list.
+    if ( ref $param ne 'HASH' ) {
+        carp "Last parameter '$param' in add_table() must be a hash ref";
+        return -3;
+    }
+
+
+    # List of valid input parameters.
+    my %valid_parameter = (
+        autofilter     => 1,
+        banded_columns => 1,
+        banded_rows    => 1,
+        columns        => 1,
+        data           => 1,
+        first_column   => 1,
+        header_row     => 1,
+        last_column    => 1,
+        name           => 1,
+        style          => 1,
+        total_row      => 1,
+    );
+
+    # Check for valid input parameters.
+    for my $param_key ( keys %$param ) {
+        if ( not exists $valid_parameter{$param_key} ) {
+            carp "Unknown parameter '$param_key' in add_table()";
+            return -3;
+        }
+    }
+
+    # Table count is a member of Workbook, global to all Worksheet.
+    ${ $self->{_table_count} }++;
+    $table{_id} = ${ $self->{_table_count} };
+
+    # Turn on Excel's defaults.
+    $param->{banded_rows} = 1 if !defined $param->{banded_rows};
+    $param->{header_row}  = 1 if !defined $param->{header_row};
+    $param->{autofilter}  = 1 if !defined $param->{autofilter};
+
+    # Set the table options.
+    $table{_show_first_col}   = $param->{first_column}   ? 1 : 0;
+    $table{_show_last_col}    = $param->{last_column}    ? 1 : 0;
+    $table{_show_row_stripes} = $param->{banded_rows}    ? 1 : 0;
+    $table{_show_col_stripes} = $param->{banded_columns} ? 1 : 0;
+    $table{_header_row_count} = $param->{header_row}     ? 1 : 0;
+    $table{_totals_row_shown} = $param->{total_row}      ? 1 : 0;
+
+
+    # Set the table name.
+    if ( defined $param->{name} ) {
+        $table{_name} = $param->{name};
+    }
+    else {
+
+        # Set a default name.
+        $table{_name} = 'Table' . $table{_id};
+    }
+
+
+    # Set the table style.
+    if ( defined $param->{style} ) {
+        $table{_style} = $param->{style};
+
+        # Remove whitespace from style name.
+        $table{_style} =~ s/\s//g;
+    }
+    else {
+        $table{_style} = "TableStyleMedium9";
+    }
+
+
+    # Swap last row/col for first row/col as necessary.
+    if ( $row1 > $row2 ) {
+        ( $row1, $row2 ) = ( $row2, $row1 );
+    }
+
+    if ( $col1 > $col2 ) {
+        ( $col1, $col2 ) = ( $col2, $col1 );
+    }
+
+
+    # Set the data range rows (without the header and footer).
+    my $first_data_row = $row1;
+    my $last_data_row  = $row2;
+    $first_data_row++ if $param->{header_row};
+    $last_data_row--  if $param->{total_row};
+
+
+    # Set the table and autofilter ranges.
+    $table{_range}   = xl_range( $row1, $row2,          $col1, $col2 );
+    $table{_a_range} = xl_range( $row1, $last_data_row, $col1, $col2 );
+
+
+    # If the header row if off the default is to turn autofilter off.
+    if ( !$param->{header_row} ) {
+        $param->{autofilter} = 0;
+    }
+
+    # Set the autofilter range.
+    if ( $param->{autofilter} ) {
+        $table{_autofilter} = $table{_a_range};
+    }
+
+    # Add the table columns.
+    my $col_id = 1;
+    for my $col_num ( $col1 .. $col2 ) {
+
+        # Set up the default column data.
+        my $col_data = {
+            _id             => $col_id,
+            _name           => 'Column' . $col_id,
+            _total_string   => '',
+            _total_function => '',
+            _formula        => '',
+            _format         => undef,
+        };
+
+        # Overwrite the defaults with any use defined values.
+        if ( $param->{columns} ) {
+
+            # Check if there are user defined values for this column.
+            if ( my $user_data = $param->{columns}->[ $col_id - 1 ] ) {
+
+                # Map user defined values to internal values.
+                $col_data->{_name} = $user_data->{header}
+                  if $user_data->{header};
+
+                # Handle the column formula.
+                if ( $user_data->{formula} ) {
+                    my $formula = $user_data->{formula};
+
+                    # Remove the leading = from formula.
+                    $formula =~ s/^=//;
+
+                    # Covert Excel 2010 "@" ref to 2007 "#This Row".
+                    $formula =~ s/@/[#This Row],/g;
+
+                    $col_data->{_formula} = $formula;
+
+                    for my $row ( $first_data_row .. $last_data_row ) {
+                        $self->write_formula( $row, $col_num, $formula,
+                            $user_data->{format} );
+                    }
+                }
+
+                # Handle the function for the total row.
+                if ( $user_data->{total_function} ) {
+                    my $function = $user_data->{total_function};
+
+                    # Massage the function name.
+                    $function = lc $function;
+                    $function =~ s/_//g;
+                    $function =~ s/\s//g;
+
+                    $function = 'countNums' if $function eq 'countnums';
+                    $function = 'stdDev'    if $function eq 'stddev';
+
+                    $col_data->{_total_function} = $function;
+
+                    my $formula = _table_function_to_formula(
+                        $function,
+                        $col_data->{_name}
+
+                    );
+
+                    $self->write_formula( $row2, $col_num, $formula,
+                        $user_data->{format} );
+
+                }
+                elsif ( $user_data->{total_string} ) {
+
+                    # Total label only (not a function).
+                    my $total_string = $user_data->{total_string};
+                    $col_data->{_total_string} = $total_string;
+
+                    $self->write_string( $row2, $col_num, $total_string,
+                        $user_data->{format} );
+                }
+
+                # Get the dxf format index.
+                if ( defined $user_data->{format} && ref $user_data->{format} )
+                {
+                    $col_data->{_format} =
+                      $user_data->{format}->get_dxf_index();
+                }
+
+                # Store the column format for writing the cell data.
+                # It doesn't matter if it is undefined.
+                $col_formats[$col_id - 1 ] = $user_data->{format};
+            }
+        }
+
+        # Store the column data.
+        push @{ $table{_columns} }, $col_data;
+
+        # Write the column headers to the worksheet.
+        if ( $param->{header_row} ) {
+            $self->write_string( $row1, $col_num, $col_data->{_name} );
+        }
+
+        $col_id++;
+    }    # Table columns.
+
+
+
+    # Write the cell data if supplied.
+    if ( my $data = $param->{data} ) {
+
+        my $i = 0;    # For indexing the row data.
+        for my $row ( $first_data_row .. $last_data_row ) {
+            my $j = 0;    # For indexing the col data.
+
+            for my $col ( $col1 .. $col2 ) {
+
+                my $token = $data->[$i]->[$j];
+
+                if ($token) {
+                    $self->write( $row, $col, $token, $col_formats[$j] );
+                }
+
+                $j++;
+            }
+            $i++;
+        }
+    }
+
+
+    # Store the table data.
+    push @{ $self->{_tables} }, \%table;
+
+    # Store the link used for the rels file.
+    push @{ $self->{_external_table_links} },
+      [ '/table', '../tables/table' . $table{_id} . '.xml' ];
+
+    return \%table;
+}
+
+
+###############################################################################
+#
 # Internal methods.
 #
 ###############################################################################
+
+
+###############################################################################
+#
+# _table_function_to_formula
+#
+# Convert a table total function to a worksheet formula.
+#
+sub _table_function_to_formula {
+
+    my $function = shift;
+    my $col_name = shift;
+    my $formula  = '';
+
+    my %subtotals = (
+        average   => 101,
+        countNums => 102,
+        count     => 103,
+        max       => 104,
+        min       => 105,
+        stdDev    => 107,
+        sum       => 109,
+        var       => 110,
+    );
+
+    if ( exists $subtotals{$function} ) {
+        my $func_num = $subtotals{$function};
+        $formula = qq{SUBTOTAL($func_num,[$col_name])};
+    }
+    else {
+        carp "Unsupported function '$function' in add_table()";
+    }
+
+    return $formula;
+}
+
 
 
 ###############################################################################
@@ -3798,6 +4163,21 @@ sub _cell_to_rowcol {
 
     # TODO Check row and column range
     return $row, $col, $row_abs, $col_abs;
+}
+
+
+###############################################################################
+#
+# _xl_rowcol_to_cell($row, $col)
+#
+# Optimised version of xl_rowcol_to_cell from Utility.pm for the inner loop
+# of write_cell().
+#
+
+our @col_names = ( 'A' .. 'XFD' );
+
+sub _xl_rowcol_to_cell {
+    return $col_names[ $_[1] ] . ( $_[0] + 1 );
 }
 
 
@@ -4081,6 +4461,54 @@ sub _position_object_emus {
 
 ###############################################################################
 #
+#  _position_shape_emus()
+#
+# Calculate the vertices that define the position of a shape object within
+# the worksheet in EMUs.  Save the vertices with the object.
+#
+# The vertices are expressed as English Metric Units (EMUs). There are 12,700
+# EMUs per point. Therefore, 12,700 * 3 /4 = 9,525 EMUs per pixel.
+#
+sub _position_shape_emus {
+
+    my $self  = shift;
+    my $shape = shift;
+
+    my (
+        $col_start, $row_start, $x1, $y1,    $col_end,
+        $row_end,   $x2,        $y2, $x_abs, $y_abs
+      )
+      = $self->_position_object_pixels(
+        $shape->{_column_start},
+        $shape->{_row_start},
+        $shape->{_x_offset},
+        $shape->{_y_offset},
+        $shape->{_width} * $shape->{_scale_x},
+        $shape->{_height} * $shape->{_scale_y},
+        $shape->{_drawing}
+      );
+
+    # Now that x2/y2 have been calculated with a potentially negative
+    # width/height we use the absolute value and convert to EMUs.
+    $shape->{_width_emu}  = int( abs( $shape->{_width} * 9_525 ) );
+    $shape->{_height_emu} = int( abs( $shape->{_height} * 9_525 ) );
+
+    $shape->{_column_start} = int( $col_start );
+    $shape->{_row_start}    = int( $row_start );
+    $shape->{_column_end}   = int( $col_end );
+    $shape->{_row_end}      = int( $row_end );
+
+    # Convert the pixel values to EMUs. See above.
+    $shape->{_x1}    = int( $x1 * 9_525 );
+    $shape->{_y1}    = int( $y1 * 9_525 );
+    $shape->{_x2}    = int( $x2 * 9_525 );
+    $shape->{_y2}    = int( $y2 * 9_525 );
+    $shape->{_x_abs} = int( $x_abs * 9_525 );
+    $shape->{_y_abs} = int( $y_abs * 9_525 );
+}
+
+###############################################################################
+#
 # _size_col($col)
 #
 # Convert the width of a cell from user's units to pixels. Excel rounds the
@@ -4292,6 +4720,32 @@ sub insert_chart {
 
 ###############################################################################
 #
+# _sort_charts()
+#
+# Sort the worksheet charts into the order that they were created in rather
+# than the insertion order. This is ensure that the chart and drawing objects
+# written in the same order. The chart id is used to sort back into creation
+# order.
+#
+sub _sort_charts {
+
+    my $self        = shift;
+    my $chart_count = scalar @{ $self->{_charts} };
+
+    # Return if no sorting is required.
+    return if $chart_count < 2;
+
+    my @chart_data = @{ $self->{_charts} };
+
+    # Sort the charts into creation order based on the chart id.
+    @chart_data = sort { $a->[2]->{_id} <=> $b->[2]->{_id} } @chart_data;
+
+    $self->{_charts} = \@chart_data;
+}
+
+
+###############################################################################
+#
 # _prepare_chart()
 #
 # Set up chart/drawings.
@@ -4314,11 +4768,15 @@ sub _prepare_chart {
       $self->_position_object_emus( $col, $row, $x_offset, $y_offset, $width,
         $height );
 
+    # Set the chart name for the embedded object if it has been specified.
+    my $name = $chart->{_chart_name};
+
     # Create a Drawing object to use with worksheet unless one already exists.
     if ( !$self->{_drawing} ) {
 
         my $drawing = Excel::Writer::XLSX::Drawing->new();
-        $drawing->_add_drawing_object( $drawing_type, @dimensions );
+        $drawing->_add_drawing_object( $drawing_type, @dimensions, 0, 0,
+            $name );
         $drawing->{_embedded} = 1;
 
         $self->{_drawing} = $drawing;
@@ -4328,7 +4786,8 @@ sub _prepare_chart {
     }
     else {
         my $drawing = $self->{_drawing};
-        $drawing->_add_drawing_object( $drawing_type, @dimensions );
+        $drawing->_add_drawing_object( $drawing_type, @dimensions, 0, 0,
+            $name );
 
     }
 
@@ -4362,14 +4821,14 @@ sub _get_range_data {
     for my $row_num ( $row_start .. $row_end ) {
 
         # Store undef if row doesn't exist.
-        if ( !$self->{_table}->[$row_num] ) {
+        if ( ! exists $self->{_table}->{$row_num} ) {
             push @data, undef;
             next;
         }
 
         for my $col_num ( $col_start .. $col_end ) {
 
-            if ( my $cell = $self->{_table}->[$row_num]->[$col_num] ) {
+            if ( my $cell = $self->{_table}->{$row_num}->{$col_num} ) {
 
                 my $type  = $cell->[0];
                 my $token = $cell->[1];
@@ -4513,6 +4972,287 @@ sub _prepare_image {
 
 ###############################################################################
 #
+# insert_shape( $row, $col, $shape, $x, $y, $scale_x, $scale_y )
+#
+# Insert a shape into the worksheet.
+#
+sub insert_shape {
+
+    my $self = shift;
+
+    # Check for a cell reference in A1 notation and substitute row and column.
+    if ( $_[0] =~ /^\D/ ) {
+        @_ = $self->_substitute_cellref( @_ );
+    }
+
+    # Check the number of arguments.
+    croak "Insufficient arguments in insert_shape()" unless @_ >= 3;
+
+    my $shape = $_[2];
+
+    # Verify we are being asked to insert a "shape" object.
+    croak "Not a Shape object in insert_shape()"
+      unless $shape->isa( 'Excel::Writer::XLSX::Shape' );
+
+    # Set the shape properties.
+    $shape->{_row_start}    = $_[0];
+    $shape->{_column_start} = $_[1];
+    $shape->{_x_offset}     = $_[3] || 0;
+    $shape->{_y_offset}     = $_[4] || 0;
+
+    # Override shape scale if supplied as an argument.  Otherwise, use the
+    # existing shape scale factors.
+    $shape->{_scale_x} = $_[5] if defined $_[5];
+    $shape->{_scale_y} = $_[6] if defined $_[6];
+
+    # Assign a shape ID.
+    my $needs_id = 1;
+    while ( $needs_id ) {
+        my $id = $shape->{_id} || 0;
+        my $used = exists $self->{_shape_hash}->{$id} ? 1 : 0;
+
+        # Test if shape ID is already used. Otherwise assign a new one.
+        if ( !$used && $id != 0 ) {
+            $needs_id = 0;
+        }
+        else {
+            $shape->{_id} = ++$self->{_last_shape_id};
+        }
+    }
+
+    $shape->{_element} = $#{ $self->{_shapes} } + 1;
+
+    # Allow lookup of entry into shape array by shape ID.
+    $self->{_shape_hash}->{ $shape->{_id} } = $shape->{_element};
+
+    # Create link to Worksheet color palette.
+    $shape->{_palette} = $self->{_palette};
+
+    if ( $shape->{_stencil} ) {
+
+        # Insert a copy of the shape, not a reference so that the shape is
+        # used as a stencil. Previously stamped copies don't get modified
+        # if the stencil is modified.
+        my $insert = { %{$shape} };
+
+        # For connectors change x/y coords based on location of connected shapes.
+        $self->_auto_locate_connectors( $insert );
+
+        # Bless the copy into this class, so AUTOLOADED _get, _set methods
+        #still work on the child.
+        bless $insert, ref $shape;
+
+        push @{ $self->{_shapes} }, $insert;
+        return $insert;
+    }
+    else {
+
+        # For connectors change x/y coords based on location of connected shapes.
+        $self->_auto_locate_connectors( $shape );
+
+        # Insert a link to the shape on the list of shapes. Connection to
+        # the parent shape is maintained
+        push @{ $self->{_shapes} }, $shape;
+        return $shape;
+    }
+}
+
+
+###############################################################################
+#
+# _prepare_shape()
+#
+# Set up drawing shapes
+#
+sub _prepare_shape {
+
+    my $self       = shift;
+    my $index      = shift;
+    my $drawing_id = shift;
+    my $shape      = $self->{_shapes}->[$index];
+    my $drawing;
+    my $drawing_type = 3;
+
+    # Create a Drawing object to use with worksheet unless one already exists.
+    if ( !$self->{_drawing} ) {
+
+        $drawing              = Excel::Writer::XLSX::Drawing->new();
+        $drawing->{_embedded} = 1;
+        $self->{_drawing}     = $drawing;
+
+        push @{ $self->{_external_drawing_links} },
+          [ '/drawing', '../drawings/drawing' . $drawing_id . '.xml' ];
+    }
+    else {
+        $drawing = $self->{_drawing};
+    }
+
+    # Validate the he shape against various rules.
+    $self->_validate_shape( $shape, $index );
+
+    $self->_position_shape_emus( $shape );
+
+    my @dimensions = (
+        $shape->{_column_start}, $shape->{_row_start},
+        $shape->{_x1},           $shape->{_y1},
+        $shape->{_column_end},   $shape->{_row_end},
+        $shape->{_x2},           $shape->{_y2},
+        $shape->{_x_abs},        $shape->{_y_abs},
+        $shape->{_width_emu},    $shape->{_height_emu},
+    );
+
+    $drawing->_add_drawing_object( $drawing_type, @dimensions, $shape->{_name},
+        $shape );
+}
+
+
+###############################################################################
+#
+# _auto_locate_connectors()
+#
+# Re-size connector shapes if they are connected to other shapes.
+#
+sub _auto_locate_connectors {
+
+    my $self  = shift;
+    my $shape = shift;
+
+    # Valid connector shapes.
+    my $connector_shapes = {
+        straightConnector => 1,
+        Connector         => 1,
+        bentConnector     => 1,
+        curvedConnector   => 1,
+        line              => 1,
+    };
+
+    my $shape_base = $shape->{_type};
+
+    # Remove the number of segments from end of type.
+    chop $shape_base;
+
+    $shape->{_connect} = $connector_shapes->{$shape_base} ? 1 : 0;
+
+    return unless $shape->{_connect};
+
+    # Both ends have to be connected to size it.
+    return unless ( $shape->{_start} and $shape->{_end} );
+
+    # Both ends need to provide info about where to connect.
+    return unless ( $shape->{_start_side} and $shape->{_end_side} );
+
+    my $sid = $shape->{_start};
+    my $eid = $shape->{_end};
+
+    my $slink_id = $self->{_shape_hash}->{$sid};
+    my ( $sls, $els );
+    if ( defined $slink_id ) {
+        $sls = $self->{_shapes}->[$slink_id];    # Start linked shape.
+    }
+    else {
+        warn "missing start connection for '$shape->{_name}', id=$sid\n";
+        return;
+    }
+
+    my $elink_id = $self->{_shape_hash}->{$eid};
+    if ( defined $elink_id ) {
+        $els = $self->{_shapes}->[$elink_id];    # Start linked shape.
+    }
+    else {
+        warn "missing end connection for '$shape->{_name}', id=$eid\n";
+        return;
+    }
+
+    # Assume shape connections are to the middle of an object, and
+    # not a corner (for now).
+    my $connect_type = $shape->{_start_side} . $shape->{_end_side};
+    my $smidx        = $sls->{_x_offset} + $sls->{_width} / 2;
+    my $emidx        = $els->{_x_offset} + $els->{_width} / 2;
+    my $smidy        = $sls->{_y_offset} + $sls->{_height} / 2;
+    my $emidy        = $els->{_y_offset} + $els->{_height} / 2;
+    my $netx         = abs( $smidx - $emidx );
+    my $nety         = abs( $smidy - $emidy );
+
+    if ( $connect_type eq 'bt' ) {
+        my $sy = $sls->{_y_offset} + $sls->{_height};
+        my $ey = $els->{_y_offset};
+
+        $shape->{_width} = abs( int( $emidx - $smidx ) );
+        $shape->{_x_offset} = int( min( $smidx, $emidx ) );
+        $shape->{_height} =
+          abs(
+            int( $els->{_y_offset} - ( $sls->{_y_offset} + $sls->{_height} ) )
+          );
+        $shape->{_y_offset} = int(
+            min( ( $sls->{_y_offset} + $sls->{_height} ), $els->{_y_offset} ) );
+        $shape->{_flip_h} = ( $smidx < $emidx ) ? 1 : 0;
+        $shape->{_rotation} = 90;
+
+        if ( $sy > $ey ) {
+            $shape->{_flip_v} = 1;
+
+            # Create 3 adjustments for an end shape vertically above a
+            # start shape. Adjustments count from the upper left object.
+            if ( $#{ $shape->{_adjustments} } < 0 ) {
+                $shape->{_adjustments} = [ -10, 50, 110 ];
+            }
+
+            $shape->{_type} = 'bentConnector5';
+        }
+    }
+    elsif ( $connect_type eq 'rl' ) {
+        $shape->{_width} =
+          abs(
+            int( $els->{_x_offset} - ( $sls->{_x_offset} + $sls->{_width} ) ) );
+        $shape->{_height} = abs( int( $emidy - $smidy ) );
+        $shape->{_x_offset} =
+          min( $sls->{_x_offset} + $sls->{_width}, $els->{_x_offset} );
+        $shape->{_y_offset} = min( $smidy, $emidy );
+
+        $shape->{_flip_h} = 1 if ( $smidx < $emidx ) and ($smidy > $emidy);
+        $shape->{_flip_h} = 1 if ( $smidx > $emidx ) and ($smidy < $emidy);
+        if ( $smidx > $emidx ) {
+
+            # Create 3 adjustments if end shape is left of start
+            if ( $#{ $shape->{_adjustments} } < 0 ) {
+                $shape->{_adjustments} = [ -10, 50, 110 ];
+            }
+
+            $shape->{_type} = 'bentConnector5';
+        }
+    }
+    else {
+        warn "Connection $connect_type not implemented yet\n";
+    }
+}
+
+
+###############################################################################
+#
+# _validate_shape()
+#
+# Check shape attributes to ensure they are valid.
+#
+sub _validate_shape {
+
+    my $self  = shift;
+    my $shape = shift;
+    my $index = shift;
+
+    if ( !grep ( /^$shape->{_align}$/, qw[l ctr r just] ) ) {
+        croak "Shape $index ($shape->{_type}) alignment ($shape->{align}), "
+          . "not in ('l', 'ctr', 'r', 'just')\n";
+    }
+
+    if ( !grep ( /^$shape->{_valign}$/, qw[t ctr b] ) ) {
+        croak "Shape $index ($shape->{_type}) vertical alignment "
+          . "($shape->{valign}), not ('t', 'ctr', 'b')\n";
+    }
+}
+
+
+###############################################################################
+#
 # _prepare_comments()
 #
 # Turn the HoH that stores the comments into an array for easier handling
@@ -4553,8 +5293,10 @@ sub _prepare_comments {
 
     $self->{_comments_array} = \@comments;
 
+    push @{ $self->{_external_vml_links} },
+      [ '/vmlDrawing', '../drawings/vmlDrawing' . $comment_id . '.vml' ];
+
     push @{ $self->{_external_comment_links} },
-      [ '/vmlDrawing', '../drawings/vmlDrawing' . $comment_id . '.vml' ],
       [ '/comments',   '../comments' . $comment_id . '.xml' ];
 
     my $count         = scalar @comments;
@@ -5324,7 +6066,7 @@ sub _write_rows {
 
         # Skip row if it doesn't contain row formatting, cell data or a comment.
         if (   !$self->{_set_rows}->{$row_num}
-            && !$self->{_table}->[$row_num]
+            && !$self->{_table}->{$row_num}
             && !$self->{_comments}->{$row_num} )
         {
             next;
@@ -5334,7 +6076,7 @@ sub _write_rows {
         my $span       = $self->{_row_spans}->[$span_index];
 
         # Write the cells if the row contains data.
-        if ( my $row_ref = $self->{_table}->[$row_num] ) {
+        if ( my $row_ref = $self->{_table}->{$row_num} ) {
 
             if ( !$self->{_set_rows}->{$row_num} ) {
                 $self->_write_row( $row_num, $span );
@@ -5346,7 +6088,7 @@ sub _write_rows {
 
 
             for my $col_num ( $self->{_dim_colmin} .. $self->{_dim_colmax} ) {
-                if ( my $col_ref = $self->{_table}->[$row_num]->[$col_num] ) {
+                if ( my $col_ref = $self->{_table}->{$row_num}->{$col_num} ) {
                     $self->_write_cell( $row_num, $col_num, $col_ref );
                 }
             }
@@ -5388,14 +6130,14 @@ sub _write_single_row {
 
     # Skip row if it doesn't contain row formatting, cell data or a comment.
     if (   !$self->{_set_rows}->{$row_num}
-        && !$self->{_table}->[$row_num]
+        && !$self->{_table}->{$row_num}
         && !$self->{_comments}->{$row_num} )
     {
         return;
     }
 
     # Write the cells if the row contains data.
-    if ( my $row_ref = $self->{_table}->[$row_num] ) {
+    if ( my $row_ref = $self->{_table}->{$row_num} ) {
 
         if ( !$self->{_set_rows}->{$row_num} ) {
             $self->_write_row( $row_num );
@@ -5406,7 +6148,7 @@ sub _write_single_row {
         }
 
         for my $col_num ( $self->{_dim_colmin} .. $self->{_dim_colmax} ) {
-            if ( my $col_ref = $self->{_table}->[$row_num]->[$col_num] ) {
+            if ( my $col_ref = $self->{_table}->{$row_num}->{$col_num} ) {
                 $self->_write_cell( $row_num, $col_num, $col_ref );
             }
         }
@@ -5421,7 +6163,7 @@ sub _write_single_row {
     }
 
     # Reset table.
-    $self->{_table} = [];
+    $self->{_table} = {};
 
 }
 
@@ -5447,10 +6189,10 @@ sub _calculate_spans {
     for my $row_num ( $self->{_dim_rowmin} .. $self->{_dim_rowmax} ) {
 
         # Calculate spans for cell data.
-        if ( my $row_ref = $self->{_table}->[$row_num] ) {
+        if ( my $row_ref = $self->{_table}->{$row_num} ) {
 
             for my $col_num ( $self->{_dim_colmin} .. $self->{_dim_colmax} ) {
-                if ( my $col_ref = $self->{_table}->[$row_num]->[$col_num] ) {
+                if ( my $col_ref = $self->{_table}->{$row_num}->{$col_num} ) {
 
                     if ( !defined $span_min ) {
                         $span_min = $col_num;
@@ -5564,6 +6306,7 @@ sub _write_empty_row {
 }
 
 
+
 ###############################################################################
 #
 # _write_cell()
@@ -5599,7 +6342,7 @@ sub _write_cell {
          $xf_index = $xf->get_xf_index();
     }
 
-    my $range = xl_rowcol_to_cell( $row, $col );
+    my $range = _xl_rowcol_to_cell( $row, $col );
     my @attributes = ( 'r' => $range );
 
     # Add the cell format index.
@@ -5620,23 +6363,15 @@ sub _write_cell {
     if ( $type eq 'n' ) {
 
         # Write a number.
-        $self->{_writer}->startTag( 'c', @attributes );
-        $self->_write_cell_value( $token );
-        $self->{_writer}->endTag( 'c' );
+        $self->{_writer}->numberElement($token, @attributes);
     }
     elsif ( $type eq 's' ) {
 
         # Write a string.
         if ( $self->{_optimization} == 0 ) {
-            push @attributes, ( 't' => 's' );
-            $self->{_writer}->startTag( 'c', @attributes );
-            $self->_write_cell_value( $token );
-            $self->{_writer}->endTag( 'c' );
+            $self->{_writer}->stringElement($token, @attributes);
         }
         else {
-            push @attributes, ( 't' => 'inlineStr' );
-            $self->{_writer}->startTag( 'c', @attributes );
-            $self->{_writer}->startTag( 'is' );
 
             my $string = $token;
 
@@ -5646,32 +6381,39 @@ sub _write_cell {
 
             # Write any rich strings without further tags.
             if ( $string =~ m{^<r>} && $string =~ m{</r>$} ) {
-                my $fh = $self->{_writer}->getOutput();
 
-                local $\ = undef;    # Protect print from -l on commandline.
-                print $fh $string;
+                $self->{_writer}->richInlineStr($string, @attributes );
             }
             else {
-                my @t_attributes;
 
                 # Add attribute to preserve leading or trailing whitespace.
+                my $preserve = 0;
                 if ( $string =~ /^\s/ || $string =~ /\s$/ ) {
-                    push @t_attributes, ( 'xml:space' => 'preserve' );
+                    $preserve = 1;
                 }
-                $self->{_writer}->dataElement( 't', $string, @t_attributes );
-            }
 
-            $self->{_writer}->endTag( 'is' );
-            $self->{_writer}->endTag( 'c' );
+                $self->{_writer}->inlineStr( $string, $preserve, @attributes );
+            }
         }
     }
     elsif ( $type eq 'f' ) {
 
         # Write a formula.
-        $self->{_writer}->startTag( 'c', @attributes );
-        $self->_write_cell_formula( $token );
-        $self->_write_cell_value( $cell->[3] || 0 );
-        $self->{_writer}->endTag( 'c' );
+        my $value = $cell->[3] || 0;
+
+        # Check if the formula value is a string.
+        if (   $value
+            && $value !~ /^([+-]?)(?=\d|\.\d)\d*(\.\d*)?([Ee]([+-]?\d+))?$/ )
+        {
+            push @attributes, ( 't' => 'str' );
+            $value =
+              Excel::Writer::XLSX::Package::XMLwriterSimple::_escape_xml_chars(
+                $value );
+        }
+
+
+        $self->{_writer}->formulaElement($token, $value, @attributes);
+
     }
     elsif ( $type eq 'a' ) {
 
@@ -5696,8 +6438,8 @@ sub _write_cell {
             # External link with rel file relationship.
             push @{ $self->{_hlink_refs} },
               [
-                $link_type,              $row,       $col,
-                ++$self->{_hlink_count}, $cell->[5], $cell->[6]
+                $link_type,            $row,       $col,
+                ++$self->{_rel_count}, $cell->[5], $cell->[6]
               ];
 
             push @{ $self->{_external_hyper_links} },
@@ -6802,7 +7544,7 @@ sub _write_drawings {
 
     return unless $self->{_drawing};
 
-    $self->_write_drawing( $self->{_hlink_count} + 1 );
+    $self->_write_drawing( ++$self->{_rel_count} );
 }
 
 
@@ -6838,9 +7580,7 @@ sub _write_legacy_drawing {
     return unless $self->{_has_comments};
 
     # Increment the relationship id for any drawings or comments.
-    $id = $self->{_hlink_count} + 1;
-    $id++ if $self->{_drawing};
-
+    $id = ++$self->{_rel_count};
 
     my @attributes = ( 'r:id' => 'rId' . $id );
 
@@ -7404,6 +8144,55 @@ sub _write_color {
 }
 
 
+
+##############################################################################
+#
+# _write_table_parts()
+#
+# Write the <tableParts> element.
+#
+sub _write_table_parts {
+
+    my $self   = shift;
+    my @tables = @{ $self->{_tables} };
+    my $count  = scalar @tables;
+
+    # Return if worksheet doesn't contain any tables.
+    return unless $count;
+
+    my @attributes = ( 'count' => $count, );
+
+    $self->{_writer}->startTag( 'tableParts', @attributes );
+
+    for my $table ( @tables ) {
+
+        # Write the tablePart element.
+        $self->_write_table_part( ++$self->{_rel_count} );
+
+    }
+
+    $self->{_writer}->endTag( 'tableParts' );
+}
+
+
+##############################################################################
+#
+# _write_table_part()
+#
+# Write the <tablePart> element.
+#
+sub _write_table_part {
+
+    my $self = shift;
+    my $id   = shift;
+    my $r_id = 'rId' . $id;
+
+    my @attributes = ( 'r:id' => $r_id, );
+
+    $self->{_writer}->emptyTag( 'tablePart', @attributes );
+}
+
+
 1;
 
 
@@ -7431,4 +8220,3 @@ John McNamara jmcnamara@cpan.org
 � MM-MMXII, John McNamara.
 
 All Rights Reserved. This module is free software. It may be used, redistributed and/or modified under the same terms as Perl itself.
-

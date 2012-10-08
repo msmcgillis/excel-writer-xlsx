@@ -22,7 +22,7 @@ use Carp;
 use Excel::Writer::XLSX::Chart;
 
 our @ISA     = qw(Excel::Writer::XLSX::Chart);
-our $VERSION = '0.47';
+our $VERSION = '0.51';
 
 
 ###############################################################################
@@ -40,6 +40,7 @@ sub new {
     $self->{_val_axis_position} = 'b';
     $self->{_horiz_val_axis}    = 0;
     $self->{_horiz_cat_axis}    = 1;
+    $self->{_show_crosses}      = 0;
 
     bless $self, $class;
 
@@ -56,14 +57,27 @@ sub new {
 sub _write_chart_type {
 
     my $self = shift;
+    my %args = @_;
 
-    # Reverse X and Y axes for Bar charts.
-    my $tmp = $self->{_y_axis};
-    $self->{_y_axis} = $self->{_x_axis};
-    $self->{_x_axis} = $tmp;
+    if ( $args{primary_axes} ) {
+        ## Reverse X and Y axes for Bar charts.
+        my $old_y = $self->{_y_axis};
+        my $old_x = $self->{_x_axis};
+
+        $self->{_y_axis} = $old_x;
+        $self->{_x_axis} = $old_y;
+
+        if ( !$self->{_y_axis}->{_major_gridlines} ) {
+            $self->{_y_axis}->{_major_gridlines} = { show => 1 };
+        }
+
+        if ( $self->{_y2_axis}->{_position} eq 'r' ) {
+            $self->{_y2_axis}->{_position} = 't';
+        }
+    }
 
     # Write the c:barChart element.
-    $self->_write_bar_chart();
+    $self->_write_bar_chart( @_ );
 }
 
 
@@ -76,26 +90,42 @@ sub _write_chart_type {
 sub _write_bar_chart {
 
     my $self = shift;
-    my $subtype = $self->{_subtype};
+    my %args = @_;
 
+    my @series;
+    if ( $args{primary_axes} ) {
+        @series = $self->_get_primary_axes_series;
+    }
+    else {
+        @series = $self->_get_secondary_axes_series;
+    }
+
+    return unless scalar @series;
+
+    my $subtype = $self->{_subtype};
     $subtype = 'percentStacked' if $subtype eq 'percent_stacked';
 
-    for (my $plane=0;$plane<=$#{$self->{_series}};$plane++) {
+    $self->{_writer}->startTag( 'c:barChart' );
 
-        $self->{_writer}->startTag( 'c:barChart' );
+    # Write the c:barDir element.
+    $self->_write_bar_dir();
 
-        # Write the c:barDir element.
-        $self->_write_bar_dir();
+    # Write the c:grouping element.
+    $self->_write_grouping( $subtype );
 
-        # Write the c:grouping element.
-        $self->_write_grouping( $subtype );
+    # Write the c:ser elements.
+    $self->_write_ser( $_ ) for @series;
 
-        # Write the series elements.
-        $self->_write_series($plane);
+    # Write the c:marker element.
+    $self->_write_marker_value();
 
-        $self->{_writer}->endTag( 'c:barChart' );
+    # Write the c:overlap element.
+    $self->_write_overlap() if $self->{_subtype} =~ /stacked/;
 
-    }
+    # Write the c:axId elements
+    $self->_write_axis_ids( %args );
+
+    $self->{_writer}->endTag( 'c:barChart' );
 }
 
 
@@ -115,39 +145,6 @@ sub _write_bar_dir {
     $self->{_writer}->emptyTag( 'c:barDir', @attributes );
 }
 
-
-##############################################################################
-#
-# _write_series()
-#
-# Over-ridden to add c:overlap.
-#
-# Write the series elements.
-#
-sub _write_series {
-
-    my $self = shift;
-    my $plane = shift;
-
-    # Write each series with subelements.
-    for my $series ( @{ $self->{_series}[$plane] } ) {
-        $self->_write_ser( $series );
-    }
-
-    # Write the c:marker element.
-    $self->_write_marker_value();
-
-    # Write the c:overlap element.
-    $self->_write_overlap() if $self->{_subtype} =~ /stacked/;
-
-    # Generate the axis ids.
-    $self->_add_axis_id($plane);
-    $self->_add_axis_id($plane);
-
-    # Write the c:axId element.
-    $self->_write_axis_id( $self->{_axis_ids}[$plane][0] );
-    $self->_write_axis_id( $self->{_axis_ids}[$plane][1] );
-}
 
 1;
 
@@ -205,7 +202,7 @@ Once the object is created it can be configured via the following methods that a
 
 These methods are explained in detail in L<Excel::Writer::XLSX::Chart>. Class specific methods or settings, if any, are explained below.
 
-=head1 Bar Chart Methods
+=head1 Bar Chart Subtypes
 
 The C<Bar> chart module also supports the following sub-types:
 

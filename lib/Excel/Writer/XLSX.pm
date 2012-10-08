@@ -18,7 +18,7 @@ use strict;
 use Excel::Writer::XLSX::Workbook;
 
 our @ISA     = qw(Excel::Writer::XLSX::Workbook Exporter);
-our $VERSION = '0.47';
+our $VERSION = '0.51';
 
 
 ###############################################################################
@@ -50,7 +50,7 @@ Excel::Writer::XLSX - Create a new file in the Excel 2007+ XLSX format.
 
 =head1 VERSION
 
-This document refers to version 0.47 of Excel::Writer::XLSX, released April 1, 2012.
+This document refers to version 0.51 of Excel::Writer::XLSX, released September 16, 2012.
 
 
 
@@ -102,7 +102,7 @@ This module cannot, as yet, be used to write to an existing Excel XLSX file.
 
 C<Excel::Writer::XLSX> uses the same interface as the L<Spreadsheet::WriteExcel> module which produces an Excel file in binary XLS format.
 
-Excel::Writer::XLSX supports all of the features of Spreadsheet::WriteExcel and in some cases has more functionality. For more details see L<Compatibility with Spreadsheet::WriteExcel>.
+Excel::Writer::XLSX supports all of the features of Spreadsheet::WriteExcel and in some cases has more functionality. For more details see L</Compatibility with Spreadsheet::WriteExcel>.
 
 The main advantage of the XLSX format over the XLS format is that it allows a larger number of rows and columns in a worksheet. The XLSX file format also produces much smaller files than the XLS file format.
 
@@ -127,7 +127,7 @@ Like this:
     $worksheet = $workbook->add_worksheet();                   # Step 2
     $worksheet->write( 'A1', 'Hi Excel!' );                    # Step 3
 
-This will create an Excel file called C<perl.xlsx> with a single worksheet and the text C<'Hi Excel!'> in the relevant cell. And that's it. Okay, so there is actually a zeroth step as well, but C<use module> goes without saying. There are many examples that come with the distribution and which you can use to get you started. See L<EXAMPLES>.
+This will create an Excel file called C<perl.xlsx> with a single worksheet and the text C<'Hi Excel!'> in the relevant cell. And that's it. Okay, so there is actually a zeroth step as well, but C<use module> goes without saying. There are many examples that come with the distribution and which you can use to get you started. See L</EXAMPLES>.
 
 Those of you who read the instructions first and assemble the furniture afterwards will know how to proceed. ;-)
 
@@ -142,6 +142,7 @@ The Excel::Writer::XLSX module provides an object oriented interface to a new Ex
     add_worksheet()
     add_format()
     add_chart()
+    add_shape()
     close()
     set_properties()
     define_name()
@@ -177,7 +178,7 @@ It is recommended that the filename uses the extension C<.xlsx> rather than C<.x
 
 The C<new()> constructor returns a Excel::Writer::XLSX object that you can use to add worksheets and store data. It should be noted that although C<my> is not specifically required it defines the scope of the new workbook variable and, in the majority of cases, ensures that the workbook is closed properly without explicitly calling the C<close()> method.
 
-If the file cannot be created, due to file permissions or some other reason,  C<new> will return C<undef>. Therefore, it is good practice to check the return value of C<new> before proceeding. As usual the Perl variable C<$!> will be set if there is a file creation error. You will also see one of the warning messages detailed in L<DIAGNOSTICS>:
+If the file cannot be created, due to file permissions or some other reason,  C<new> will return C<undef>. Therefore, it is good practice to check the return value of C<new> before proceeding. As usual the Perl variable C<$!> will be set if there is a file creation error. You will also see one of the warning messages detailed in L</DIAGNOSTICS>:
 
     my $workbook = Excel::Writer::XLSX->new( 'protected.xlsx' );
     die "Problems creating new Excel file: $!" unless defined $workbook;
@@ -265,7 +266,7 @@ The C<add_format()> method can be used to create new Format objects which are us
     $format1 = $workbook->add_format( %props );    # Set properties at creation
     $format2 = $workbook->add_format();            # Set properties later
 
-See the L<CELL FORMATTING> section for more details about Format properties and how to set them.
+See the L</CELL FORMATTING> section for more details about Format properties and how to set them.
 
 
 
@@ -331,8 +332,27 @@ Specifies that the Chart object will be inserted in a worksheet via the C<insert
 
 See Excel::Writer::XLSX::Chart for details on how to configure the chart object once it is created. See also the C<chart_*.pl> programs in the examples directory of the distro.
 
+=head2 add_shape( %properties )
+
+The C<add_shape()> method can be used to create new shapes that may be inserted into a worksheet.
+
+You can either define the properties at creation time via a hash of property values or later via method calls.
+
+    # Set properties at creation.
+    $plus = $workbook->add_shape(
+        type   => 'plus',
+        id     => 3,
+        width  => $pw,
+        height => $ph
+    );
 
 
+    # Default rectangle shape. Set properties later.
+    $rect =  $workbook->add_shape();
+
+See L<Excel::Writer::XLSX::Shape> for details on how to configure the shape object once it is created.
+
+See also the C<shape*.pl> programs in the examples directory of the distro.
 
 =head2 close()
 
@@ -443,7 +463,7 @@ The directory for the temporary file must exist, C<set_tempdir()> will not creat
 
 The C<set_custom_color()> method can be used to override one of the built-in palette values with a more suitable colour.
 
-The value for C<$index> should be in the range 8..63, see L<COLOURS IN EXCEL>.
+The value for C<$index> should be in the range 8..63, see L</COLOURS IN EXCEL>.
 
 The default named colours use the following indices:
 
@@ -517,7 +537,7 @@ The following example returns the first and last worksheet in a workbook:
     }
 
 
-Array slices are explained in the perldata manpage.
+Array slices are explained in the C<perldata> manpage.
 
 
 
@@ -528,7 +548,7 @@ Excel stores dates as real numbers where the integer part stores the number of d
 
 Excel::Writer::XLSX stores dates in the 1900 format by default. If you wish to change this you can call the C<set_1904()> workbook method. You can query the current value by calling the C<get_1904()> workbook method. This returns 0 for 1900 and 1 for 1904.
 
-See also L<DATES AND TIME IN EXCEL> for more information about working with Excel's date system.
+See also L</DATES AND TIME IN EXCEL> for more information about working with Excel's date system.
 
 In general you probably won't need to use C<set_1904()>.
 
@@ -542,7 +562,7 @@ The C<set_optimization()> method is used to turn on optimizations in the Excel::
     $workbook->set_optimization();
 
 
-See L<SPEED AND MEMORY USAGE> for more background information.
+See L</SPEED AND MEMORY USAGE> for more background information.
 
 Note, that with this optimization turned on a row of data is written and then discarded when a cell in a new row is added via one of the Worksheet C<write_*()> methods. As such data should be written in sequential row order once the optimization is turned on.
 
@@ -576,8 +596,10 @@ The following methods are available through a new worksheet:
     add_write_handler()
     insert_image()
     insert_chart()
+    insert_shape()
     data_validation()
     conditional_formatting()
+    add_table()
     get_name()
     activate()
     select()
@@ -707,7 +729,7 @@ C<write_col()> if C<$token> is an array ref of array refs.
 
 C<write_string()> if none of the previous conditions apply.
 
-The C<$format> parameter is optional. It should be a valid Format object, see L<CELL FORMATTING>:
+The C<$format> parameter is optional. It should be a valid Format object, see L</CELL FORMATTING>:
 
     my $format = $workbook->add_format();
     $format->set_bold();
@@ -741,7 +763,7 @@ Write an integer or a float to the cell specified by C<$row> and C<$column>:
     $worksheet->write_number( 0, 0, 123456 );
     $worksheet->write_number( 'A2', 2.3451 );
 
-See the note about L<Cell notation>. The C<$format> parameter is optional.
+See the note about L</Cell notation>. The C<$format> parameter is optional.
 
 In general it is sufficient to use the C<write()> method.
 
@@ -773,7 +795,7 @@ However, if the user edits this string Excel may convert it back to a number. To
     my $format1 = $workbook->add_format( num_format => '@' );
     $worksheet->write_string( 'A2', '01209', $format1 );
 
-See also the note about L<Cell notation>.
+See also the note about L</Cell notation>.
 
 
 
@@ -857,7 +879,7 @@ See the C<rich_strings.pl> example in the distro for more examples.
 
 =end html
 
-As with C<write_sting()> the maximum string size is 32767 characters. See also the note about L<Cell notation>.
+As with C<write_sting()> the maximum string size is 32767 characters. See also the note about L</Cell notation>.
 
 
 
@@ -898,7 +920,7 @@ The above code would generate a worksheet that looked like the following:
     | 4 | 01209     |           |           |           | ...
 
 
-The examples are on different sides of the cells due to the fact that Excel displays strings with a left justification and numbers with a right justification by default. You can change this by using a format to justify the data, see L<CELL FORMATTING>.
+The examples are on different sides of the cells due to the fact that Excel displays strings with a left justification and numbers with a right justification by default. You can change this by using a format to justify the data, see L</CELL FORMATTING>.
 
 It should be noted that if the user edits the data in examples C<A3> and C<A4> the strings will revert back to numbers. Again this is Excel's default behaviour. To avoid this you can use the text format C<@>:
 
@@ -932,7 +954,7 @@ As such, if you write an empty cell without formatting it is ignored:
 
 This seemingly uninteresting fact means that you can write arrays of data without special treatment for C<undef> or empty string values.
 
-See the note about L<Cell notation>.
+See the note about L</Cell notation>.
 
 
 
@@ -1091,7 +1113,7 @@ The following variations on the C<$date_string> parameter are permitted:
 
 Note that the C<T> is required in all cases.
 
-A date should always have a C<$format>, otherwise it will appear as a number, see L<DATES AND TIME IN EXCEL> and L<CELL FORMATTING>. Here is a typical example:
+A date should always have a C<$format>, otherwise it will appear as a number, see L</DATES AND TIME IN EXCEL> and L</CELL FORMATTING>. Here is a typical example:
 
     my $date_format = $workbook->add_format( num_format => 'mm/dd/yy' );
     $worksheet->write_date_time( 'A1', '2004-05-13T23:20', $date_format );
@@ -1157,7 +1179,7 @@ Finally, you can avoid most of these quoting problems by using forward slashes. 
 
 Note, Excel doesn't allow white space in hyperlink urls. Urls with whitespace will generate a warning and be ignored.
 
-See also, the note about L<Cell notation>.
+See also, the note about L</Cell notation>.
 
 
 
@@ -1179,7 +1201,7 @@ Array formulas are also supported:
 
 See also the C<write_array_formula()> method below.
 
-See the note about L<Cell notation>. For more information about writing Excel formulas see L<FORMULAS AND FUNCTIONS IN EXCEL>
+See the note about L</Cell notation>. For more information about writing Excel formulas see L</FORMULAS AND FUNCTIONS IN EXCEL>
 
 If required, it is also possible to specify the calculated value of the formula. This is occasionally necessary when working with non-Excel applications that don't calculate the value of the formula. The calculated C<$value> is added at the end of the argument list:
 
@@ -1252,7 +1274,7 @@ The following example shows how to add a comment to a cell:
     $worksheet->write        ( 2, 2, 'Hello' );
     $worksheet->write_comment( 2, 2, 'This is a comment.' );
 
-As usual you can replace the C<$row> and C<$column> parameters with an C<A1> cell reference. See the note about L<Cell notation>.
+As usual you can replace the C<$row> and C<$column> parameters with an C<A1> cell reference. See the note about L</Cell notation>.
 
     $worksheet->write        ( 'C3', 'Hello');
     $worksheet->write_comment( 'C3', 'This is a comment.' );
@@ -1338,7 +1360,7 @@ This option is used to set the height of the cell comment box explicitly in pixe
 
 =item Option: color
 
-This option is used to set the background colour of cell comment box. You can use one of the named colours recognised by Excel::Writer::XLSX or a colour index. See L<COLOURS IN EXCEL>.
+This option is used to set the background colour of cell comment box. You can use one of the named colours recognised by Excel::Writer::XLSX or a colour index. See L</COLOURS IN EXCEL>.
 
     $worksheet->write_comment( 'C3', 'Hello', color => 'green' );
     $worksheet->write_comment( 'C4', 'Hello', color => 0x35 );      # Orange
@@ -1552,8 +1574,33 @@ The parameters C<$scale_x> and C<$scale_y> can be used to scale the inserted ima
     # Scale the width by 120% and the height by 150%
     $worksheet->insert_chart( 'E2', $chart, 0, 0, 1.2, 1.5 );
 
+=head2 insert_shape( $row, $col, $shape, $x, $y, $scale_x, $scale_y )
 
+This method can be used to insert a Shape object into a worksheet. The Shape must be created by the C<add_shape()> Workbook method.
 
+    my $shape = $workbook->add_shape( name => 'My Shape', type => 'plus' );
+
+    # Configure the shape.
+    $shape->set_text('foo');
+    ...
+
+    # Insert the shape into the a worksheet.
+    $worksheet->insert_shape( 'E2', $shape );
+
+See C<add_shape()> for details on how to create the Shape object and L<Excel::Writer::XLSX::Shape> for details on how to configure it.
+
+The C<$x>, C<$y>, C<$scale_x> and C<$scale_y> parameters are optional.
+
+The parameters C<$x> and C<$y> can be used to specify an offset from the top left hand corner of the cell specified by C<$row> and C<$col>. The offset values are in pixels.
+
+    $worksheet1->insert_shape( 'E2', $chart, 3, 3 );
+
+The parameters C<$scale_x> and C<$scale_y> can be used to scale the inserted shape horizontally and vertically:
+
+    # Scale the width by 120% and the height by 150%
+    $worksheet->insert_shape( 'E2', $shape, 0, 0, 1.2, 1.5 );
+
+See also the C<shape*.pl> programs in the examples directory of the distro.
 
 =head2 data_validation()
 
@@ -1573,7 +1620,7 @@ The C<data_validation()> method is used to construct an Excel data validation or
             value    => ['open', 'high', 'close'],
         });
 
-This method contains a lot of parameters and is described in detail in a separate section L<DATA VALIDATION IN EXCEL>.
+This method contains a lot of parameters and is described in detail in a separate section L</DATA VALIDATION IN EXCEL>.
 
 
 See also the C<data_validate.pl> program in the examples directory of the distro
@@ -1598,6 +1645,18 @@ This method contains a lot of parameters and is described in detail in a separat
 
 See also the C<conditional_format.pl> program in the examples directory of the distro
 
+
+
+
+=head2 add_table()
+
+The C<add_table()> method is used to group a range of cells into an Excel Table.
+
+    $worksheet->add_table( 'B3:F7', { ... } );
+
+This method contains a lot of parameters and is described in detail in a separate section L<TABLES IN EXCEL>.
+
+See also the C<tables.pl> program in the examples directory of the distro
 
 
 
@@ -1687,7 +1746,7 @@ The C<protect()> method is used to protect a worksheet from modification:
 
 The C<protect()> method also has the effect of enabling a cell's C<locked> and C<hidden> properties if they have been set. A I<locked> cell cannot be edited and this property is on by default for all cells. A I<hidden> cell will display the results of a formula but not the formula itself.
 
-See the C<protection.pl> program in the examples directory of the distro for an illustrative example and the C<set_locked> and C<set_hidden> format methods in L<CELL FORMATTING>.
+See the C<protection.pl> program in the examples directory of the distro for an illustrative example and the C<set_locked> and C<set_hidden> format methods in L<C/ELL FORMATTING>.
 
 You can optionally add a password to the worksheet protection:
 
@@ -1727,7 +1786,7 @@ The default boolean values are shown above. Individual elements can be protected
 
 =head2 set_selection( $first_row, $first_col, $last_row, $last_col )
 
-This method can be used to specify which cell or cells are selected in a worksheet. The most common requirement is to select a single cell, in which case C<$last_row> and C<$last_col> can be omitted. The active cell within a selected range is determined by the order in which C<$first> and C<$last> are specified. It is also possible to specify a cell or a range using A1 notation. See the note about L<Cell notation>.
+This method can be used to specify which cell or cells are selected in a worksheet. The most common requirement is to select a single cell, in which case C<$last_row> and C<$last_col> can be omitted. The active cell within a selected range is determined by the order in which C<$first> and C<$last> are specified. It is also possible to specify a cell or a range using A1 notation. See the note about L</Cell notation>.
 
 Examples:
 
@@ -1768,7 +1827,7 @@ The C<$hidden> parameter should be set to 1 if you wish to hide a row. This can 
     $worksheet->set_row( 0, 20,    $format, 1 );
     $worksheet->set_row( 1, undef, undef,   1 );
 
-The C<$level> parameter is used to set the outline level of the row. Outlines are described in L<OUTLINES AND GROUPING IN EXCEL>. Adjacent rows with the same outline level are grouped together into a single outline.
+The C<$level> parameter is used to set the outline level of the row. Outlines are described in L</OUTLINES AND GROUPING IN EXCEL>. Adjacent rows with the same outline level are grouped together into a single outline.
 
 The following example sets an outline level of 1 for rows 1 and 2 (zero-indexed):
 
@@ -1797,7 +1856,7 @@ This method can be used to change the default properties of a single column or a
 
 If C<set_column()> is applied to a single column the value of C<$first_col> and C<$last_col> should be the same. In the case where C<$last_col> is zero it is set to the same value as C<$first_col>.
 
-It is also possible, and generally clearer, to specify a column range using the form of A1 notation used for columns. See the note about L<Cell notation>.
+It is also possible, and generally clearer, to specify a column range using the form of A1 notation used for columns. See the note about L</Cell notation>.
 
 Examples:
 
@@ -1808,7 +1867,7 @@ Examples:
 
 The width corresponds to the column width value that is specified in Excel. It is approximately equal to the length of a string in the default font of Calibri 11. Unfortunately, there is no way to specify "AutoFit" for a column in the Excel file format. This feature is only available at runtime from within Excel.
 
-As usual the C<$format> parameter is optional, for additional information, see L<CELL FORMATTING>. If you wish to set the format without changing the width you can pass C<undef> as the width parameter:
+As usual the C<$format> parameter is optional, for additional information, see L</CELL FORMATTING>. If you wish to set the format without changing the width you can pass C<undef> as the width parameter:
 
     $worksheet->set_column( 0, 0, undef, $format );
 
@@ -1832,7 +1891,7 @@ The C<$hidden> parameter should be set to 1 if you wish to hide a column. This c
     $worksheet->set_column( 'D:D', 20,    $format, 1 );
     $worksheet->set_column( 'E:E', undef, undef,   1 );
 
-The C<$level> parameter is used to set the outline level of the column. Outlines are described in L<OUTLINES AND GROUPING IN EXCEL>. Adjacent columns with the same outline level are grouped together into a single outline.
+The C<$level> parameter is used to set the outline level of the column. Outlines are described in L</OUTLINES AND GROUPING IN EXCEL>. Adjacent columns with the same outline level are grouped together into a single outline.
 
 The following example sets an outline level of 1 for columns B to G:
 
@@ -1855,7 +1914,7 @@ Excel allows up to 7 outline levels. Therefore the C<$level> parameter should be
 
 =head2 outline_settings( $visible, $symbols_below, $symbols_right, $auto_style )
 
-The C<outline_settings()> method is used to control the appearance of outlines in Excel. Outlines are described in L<OUTLINES AND GROUPING IN EXCEL>.
+The C<outline_settings()> method is used to control the appearance of outlines in Excel. Outlines are described in L</OUTLINES AND GROUPING IN EXCEL>.
 
 The C<$visible> parameter is used to control whether or not outlines are visible. Setting this parameter to 0 will cause all outlines on the worksheet to be hidden. They can be unhidden in Excel by means of the "Show Outline Symbols" command button. The default setting is 1 for visible outlines.
 
@@ -2014,7 +2073,7 @@ In Excel this option is found under Tools->Options->View.
 
 =head2 set_tab_color()
 
-The C<set_tab_color()> method is used to change the colour of the worksheet tab. This feature is only available in Excel 2002 and later. You can use one of the standard colour names provided by the Format object or a colour index. See L<COLOURS IN EXCEL> and the C<set_custom_color()> method.
+The C<set_tab_color()> method is used to change the colour of the worksheet tab. This feature is only available in Excel 2002 and later. You can use one of the standard colour names provided by the Format object or a colour index. See L</COLOURS IN EXCEL> and the C<set_custom_color()> method.
 
     $worksheet1->set_tab_color( 'red' );
     $worksheet2->set_tab_color( 0x0C );
@@ -2466,7 +2525,7 @@ For large Excel documents it is often desirable to have the first row or rows of
 
 Set the columns to repeat at the left hand side of each printed page.
 
-For large Excel documents it is often desirable to have the first column or columns of the worksheet print out at the left hand side of each page. This can be achieved by using the C<repeat_columns()> method. The parameters C<$first_column> and C<$last_column> are zero based. The C<$last_column> parameter is optional if you only wish to specify one column. You can also specify the columns using A1 column notation, see the note about L<Cell notation>.
+For large Excel documents it is often desirable to have the first column or columns of the worksheet print out at the left hand side of each page. This can be achieved by using the C<repeat_columns()> method. The parameters C<$first_column> and C<$last_column> are zero based. The C<$last_column> parameter is optional if you only wish to specify one column. You can also specify the columns using A1 column notation, see the note about L</Cell notation>.
 
     $worksheet1->repeat_columns( 0 );        # Repeat the first column
     $worksheet2->repeat_columns( 0, 1 );     # Repeat the first two columns
@@ -2519,7 +2578,7 @@ Do not confuse these headers with page headers as described in the C<set_header(
 
 =head2 print_area( $first_row, $first_col, $last_row, $last_col )
 
-This method is used to specify the area of the worksheet that will be printed. All four parameters must be specified. You can also use A1 notation, see the note about L<Cell notation>.
+This method is used to specify the area of the worksheet that will be printed. All four parameters must be specified. You can also use A1 notation, see the note about L</Cell notation>.
 
 
     $worksheet1->print_area( 'A1:H20' );    # Cells A1 to H20
@@ -2566,7 +2625,7 @@ Note that although it is valid to use both C<fit_to_pages()> and C<set_print_sca
 
 Note that C<fit_to_pages()> will override any manual page breaks that are defined in the worksheet.
 
-
+Note: When using C<fit_to_pages()> it may also be required to set the printer paper size using C<set_paper()> or else Excel will default to "US Letter".
 
 
 =head2 set_start_page( $start_page )
@@ -2896,7 +2955,7 @@ Note: The C<set_color()> method is used to set the colour of the font in a cell.
 
 For additional examples see the 'Named colors' and 'Standard colors' worksheets created by formats.pl in the examples directory.
 
-See also L<COLOURS IN EXCEL>.
+See also L</COLOURS IN EXCEL>.
 
 
 
@@ -3052,7 +3111,7 @@ Using format strings you can define very sophisticated formatting of numbers.
     $worksheet->write( 14, 0, '01209', $format13 );
 
 
-The number system used for dates is described in L<DATES AND TIME IN EXCEL>.
+The number system used for dates is described in L</DATES AND TIME IN EXCEL>.
 
 The colour format should have one of the following values:
 
@@ -3831,7 +3890,7 @@ It can be applied to a single cell or a range of cells. You can pass 3 parameter
     $worksheet->data_validation( 'A1',       {...} );
     $worksheet->data_validation( 'A1:B5',    {...} );
 
-See also the note about L<Cell notation> for more information.
+See also the note about L</Cell notation> for more information.
 
 
 The last parameter in C<data_validation()> must be a hash ref containing the parameters that describe the type and style of the data validation. The allowable parameters are:
@@ -3909,7 +3968,7 @@ The C<validate> parameter is used to set the type of data that you wish to valid
 
 Excel requires that range references are only to cells on the same worksheet.
 
-=item * B<date> restricts the cell to date values. Dates in Excel are expressed as integer values but you can also pass an ISO860 style string as used in C<write_date_time()>. See also L<DATES AND TIME IN EXCEL> for more information about working with Excel's dates.
+=item * B<date> restricts the cell to date values. Dates in Excel are expressed as integer values but you can also pass an ISO860 style string as used in C<write_date_time()>. See also L</DATES AND TIME IN EXCEL> for more information about working with Excel's dates.
 
     validate => 'date',
     criteria => '>',
@@ -3917,7 +3976,7 @@ Excel requires that range references are only to cells on the same worksheet.
     # Or like this:
     value    => '2008-07-24T',
 
-=item * B<time> restricts the cell to time values. Times in Excel are expressed as decimal values but you can also pass an ISO860 style string as used in C<write_date_time()>. See also L<DATES AND TIME IN EXCEL> for more information about working with Excel's times.
+=item * B<time> restricts the cell to time values. Times in Excel are expressed as decimal values but you can also pass an ISO860 style string as used in C<write_date_time()>. See also L</DATES AND TIME IN EXCEL> for more information about working with Excel's times.
 
     validate => 'time',
     criteria => '>',
@@ -4228,7 +4287,7 @@ It can be applied to a single cell or a range of cells. You can pass 3 parameter
     $worksheet->conditional_formatting( 'A1',       {...} );
     $worksheet->conditional_formatting( 'A1:B5',    {...} );
 
-See also the note about L<Cell notation> for more information.
+See also the note about L</Cell notation> for more information.
 
 Using C<A1> style notation is is also possible to specify non-contiguous ranges, separated by a comma. For example:
 
@@ -4310,7 +4369,7 @@ The C<type> parameter is used to set the type of conditional formatting that you
     formula         criteria
 
 
-All conditional formatting types have a C<format> paramter, see below. Other types and parameters such as icon sets will be added in time.
+All conditional formatting types have a C<format> parameter, see below. Other types and parameters such as icon sets will be added in time.
 
 =head2 type => 'cell'
 
@@ -4828,6 +4887,283 @@ Example 10. Highlight blank cells.
 See also the C<conditional_format.pl> example program in C<EXAMPLES>.
 
 
+
+=head1 TABLES IN EXCEL
+
+Tables in Excel are a way of grouping a range of cells into a single entity that has common formatting or that can be referenced from formulas. Tables can have column headers, autofilters, total rows, column formulas and default formatting.
+
+=begin html
+
+<p><center><img src="http://jmcnamara.github.com/excel-writer-xlsx/images/examples/tables.jpg" width="640" height="420" alt="Output from tables.pl" /></center></p>
+
+=end html
+
+
+For more information see "An Overview of Excel Tables" L<http://office.microsoft.com/en-us/excel-help/overview-of-excel-tables-HA010048546.aspx>.
+
+Note, tables don't work in Excel::Writer::XLSX when C<set_optimization()> mode in on.
+
+
+=head2 add_table( $row1, $col1, $row2, $col2, { parameter => 'value', ... })
+
+Tables are added to a worksheet using the C<add_table()> method:
+
+    $worksheet->add_table( 'B3:F7', { %parameters } );
+
+The data range can be specified in 'A1' or 'row/col' notation (see also the note about L</Cell notation> for more information):
+
+
+    $worksheet->add_table( 'B3:F7' );
+    # Same as:
+    $worksheet->add_table(  2, 1, 6, 5 );
+
+The last parameter in C<add_table()> should be a hash ref containing the parameters that describe the table options and data. The available parameters are:
+
+        data
+        autofilter
+        header_row
+        banded_columns
+        banded_rows
+        first_column
+        last_column
+        style
+        total_row
+        columns
+        name
+
+The table parameters are detailed below. There are no required parameters and the hash ref isn't required if no options are specified.
+
+
+
+=head2 data
+
+The C<data> parameter can be used to specify the data in the cells of the table.
+
+    my $data = [
+        [ 'Apples',  10000, 5000, 8000, 6000 ],
+        [ 'Pears',   2000,  3000, 4000, 5000 ],
+        [ 'Bananas', 6000,  6000, 6500, 6000 ],
+        [ 'Oranges', 500,   300,  200,  700 ],
+
+    ];
+
+    $worksheet->add_table( 'B3:F7', { data => $data } );
+
+Table data can also be written separately, as an array or individual cells.
+
+    # These two statements are the same as the single statement above.
+    $worksheet->add_table( 'B3:F7' );
+    $worksheet->write_col( 'B4', $data );
+
+Writing the cell data separately is occasionally required when you need to control the C<write_*()> method used to populate the cells or if you wish to tweak the cell formatting.
+
+The C<data> structure should be an array ref of array refs holding row data as shown above.
+
+=head2 header_row
+
+The C<header_row> parameter can be used to turn on or off the header row in the table. It is on by default.
+
+    $worksheet->add_table( 'B4:F7', { header_row => 0 } ); # Turn header off.
+
+The header row will contain default captions such as C<Column 1>, C<Column 2>,  etc. These captions can be overridden using the C<columns> parameter below.
+
+
+=head2 autofilter
+
+The C<autofilter> parameter can be used to turn on or off the autofilter in the header row. It is on by default.
+
+    $worksheet->add_table( 'B3:F7', { autofilter => 0 } ); # Turn autofilter off.
+
+The C<autofilter> is only shown if the C<header_row> is on. Filters within the table are not supported.
+
+
+=head2 banded_rows
+
+The C<banded_rows> parameter can be used to used to create rows of alternating colour in the table. It is on by default.
+
+    $worksheet->add_table( 'B3:F7', { banded_rows => 0 } );
+
+
+=head2 banded_columns
+
+The C<banded_columns> parameter can be used to used to create columns of alternating colour in the table. It is off by default.
+
+    $worksheet->add_table( 'B3:F7', { banded_columns => 1 } );
+
+
+=head2 first_column
+
+The C<first_column> parameter can be used to highlight the first column of the table. The type of highlighting will depend on the C<style> of the table. It may be bold text or a different colour. It is off by default.
+
+    $worksheet->add_table( 'B3:F7', { first_column => 1 } );
+
+
+=head2 last_column
+
+The C<last_column> parameter can be used to highlight the last column of the table. The type of highlighting will depend on the C<style> of the table. It may be bold text or a different colour. It is off by default.
+
+    $worksheet->add_table( 'B3:F7', { last_column => 1 } );
+
+
+=head2 style
+
+The C<style> parameter can be used to set the style of the table. Standard Excel table format names should be used (with matching capitalisation):
+
+    $worksheet11->add_table(
+        'B3:F7',
+        {
+            data      => $data,
+            style     => 'Table Style Light 11',
+        }
+    );
+
+The default table style is 'Table Style Medium 9'.
+
+
+=head2 name
+
+The C<name> parameter can be used to set the name of the table.
+
+By default tables are named C<Table1>, C<Table2>, etc. If you override the table name you must ensure that it doesn't clash with an existing table name and that it follows Excel's requirements for table names.
+
+    $worksheet->add_table( 'B3:F7', { name => 'SalesData' } );
+
+If you need to know the name of the table, for example to use it in a formula, you can get it as follows:
+
+    my $table      = $worksheet2->add_table( 'B3:F7' );
+    my $table_name = $table->{_name};
+
+
+=head2 total_row
+
+The C<total_row> parameter can be used to turn on the total row in the last row of a table. It is distinguished from the other rows by a different formatting and also with dropdown C<SUBTOTAL> functions.
+
+    $worksheet->add_table( 'B3:F7', { total_row => 1 } );
+
+The default total row doesn't have any captions or functions. These must by specified via the C<columns> parameter below.
+
+=head2 columns
+
+The C<columns> parameter can be used to set properties for columns within the table.
+
+The sub-properties that can be set are:
+
+    header
+    formula
+    total_string
+    total_function
+    format
+
+The column data must be specified as an array ref of hash refs. For example to override the default 'Column n' style table headers:
+
+    $worksheet->add_table(
+        'B3:F7',
+        {
+            data    => $data,
+            columns => [
+                { header => 'Product' },
+                { header => 'Quarter 1' },
+                { header => 'Quarter 2' },
+                { header => 'Quarter 3' },
+                { header => 'Quarter 4' },
+            ]
+        }
+    );
+
+If you don't wish to specify properties for a specific column you pass an empty hash ref and the defaults will be applied:
+
+            ...
+            columns => [
+                { header => 'Product' },
+                { header => 'Quarter 1' },
+                { },                        # Defaults to 'Column 3'.
+                { header => 'Quarter 3' },
+                { header => 'Quarter 4' },
+            ]
+            ...
+
+
+Column formulas can by applied using the C<formula> column property:
+
+    $worksheet8->add_table(
+        'B3:G7',
+        {
+            data    => $data,
+            columns => [
+                { header => 'Product' },
+                { header => 'Quarter 1' },
+                { header => 'Quarter 2' },
+                { header => 'Quarter 3' },
+                { header => 'Quarter 4' },
+                {
+                    header  => 'Year',
+                    formula => '=SUM(Table8[@[Quarter 1]:[Quarter 4]])'
+                },
+            ]
+        }
+    );
+
+The Excel 2007 C<[#This Row]> and Excel 2010 C<@> structural references are supported within the formula.
+
+As stated above the C<total_row> table parameter turns on the "Total" row in the table but it doesn't populate it with any defaults. Total captions and functions must be specified via the C<columns> property and the C<total_string> and C<total_function> sub properties:
+
+    $worksheet10->add_table(
+        'B3:F8',
+        {
+            data      => $data,
+            total_row => 1,
+            columns   => [
+                { header => 'Product',   total_string   => 'Totals' },
+                { header => 'Quarter 1', total_function => 'sum' },
+                { header => 'Quarter 2', total_function => 'sum' },
+                { header => 'Quarter 3', total_function => 'sum' },
+                { header => 'Quarter 4', total_function => 'sum' },
+            ]
+        }
+    );
+
+The supported totals row C<SUBTOTAL> functions are:
+
+        average
+        count_nums
+        count
+        max
+        min
+        std_dev
+        sum
+        var
+
+User defined functions or formulas aren't supported.
+
+Format can also be applied to columns:
+
+    my $currency_format = $workbook->add_format( num_format => '$#,##0' );
+
+    $worksheet->add_table(
+        'B3:D8',
+        {
+            data      => $data,
+            total_row => 1,
+            columns   => [
+                { header => 'Product', total_string => 'Totals' },
+                {
+                    header         => 'Quarter 1',
+                    total_function => 'sum',
+                    format         => $currency_format,
+                },
+                {
+                    header         => 'Quarter 2',
+                    total_function => 'sum',
+                    format         => $currency_format,
+                },
+            ]
+        }
+    );
+
+Standard Excel::Writer::XLSX format objects can be used. However, they should be limited to numerical formats. Overriding other table formatting may produce inconsistent results.
+
+
+
 =head1 FORMULAS AND FUNCTIONS IN EXCEL
 
 
@@ -5262,6 +5598,7 @@ different features and options of the module. See L<Excel::Writer::XLSX::Example
     chart_line.pl           A demo of line style charts.
     chart_pie.pl            A demo of pie style charts.
     chart_scatter.pl        A demo of scatter style charts.
+    chart_secondary_axis.pl A demo of a line chart with a secondary axis.
     chart_stock.pl          A demo of stock style charts.
     colors.pl               A demo of the colour palette and named colours.
     comments1.pl            Add comments to worksheet cells.
@@ -5293,9 +5630,19 @@ different features and options of the module. See L<Excel::Writer::XLSX::Example
     rich_strings.pl         Example of strings with multiple formats.
     right_to_left.pl        Change default sheet direction to right to left.
     sales.pl                An example of a simple sales spreadsheet.
+    shape1.pl               Insert shapes in worksheet.
+    shape2.pl               Insert shapes in worksheet. With properties.
+    shape3.pl               Insert shapes in worksheet. Scaled.
+    shape4.pl               Insert shapes in worksheet. With modification.
+    shape5.pl               Insert shapes in worksheet. With connections.
+    shape6.pl               Insert shapes in worksheet. With connections.
+    shape7.pl               Insert shapes in worksheet. One to many connections.
+    shape8.pl               Insert shapes in worksheet. One to many connections.
+    shape_all.pl            Demo of all the available shape and connector types.
     stats_ext.pl            Same as stats.pl with external references.
     stocks.pl               Demonstrates conditional formatting.
     tab_colors.pl           Example of how to set worksheet tab colours.
+    tables.pl               Add Excel tables to a worksheet.
     write_handler1.pl       Example of extending the write() method. Step 1.
     write_handler2.pl       Example of extending the write() method. Step 2.
     write_handler3.pl       Example of extending the write() method. Step 3.
@@ -5330,6 +5677,11 @@ The following limits are imposed by Excel 2007+:
     Maximum chars in a sheet name        31
     Maximum chars in a header/footer     254
 
+    Maximum characters in hyperlink      255
+    Maximum number of unique hyperlinks* 65,530
+
+* Per worksheet. Excel allows a greater number of non-unique hyperlinks if they are contiguous and can be grouped into a single range. This will be supported in a later version of Excel::Writer::XLSX if possible.
+
 
 
 
@@ -5345,6 +5697,7 @@ It support all of the features of Spreadsheet::WriteExcel with some minor differ
     add_worksheet()             Yes
     add_format()                Yes
     add_chart()                 Yes
+    add_shape()                 Yes. Not in Spreadsheet::WriteExcel.
     close()                     Yes
     set_properties()            Yes
     define_name()               Yes
@@ -5354,8 +5707,8 @@ It support all of the features of Spreadsheet::WriteExcel with some minor differ
     set_1904()                  Yes
     set_optimization()          Yes. Not required in Spreadsheet::WriteExcel.
     add_chart_ext()             Not supported. Not required in Excel::Writer::XLSX.
-    compatibility_mode()        Deprecated.    Not required in Excel::Writer::XLSX.
-    set_codepage()              Deprecated.    Not required in Excel::Writer::XLSX.
+    compatibility_mode()        Deprecated. Not required in Excel::Writer::XLSX.
+    set_codepage()              Deprecated. Not required in Excel::Writer::XLSX.
 
 
     Worksheet Methods           Support
@@ -5378,8 +5731,10 @@ It support all of the features of Spreadsheet::WriteExcel with some minor differ
     add_write_handler()         Yes
     insert_image()              Yes/Partial, see docs.
     insert_chart()              Yes
+    insert_shape()              Yes. Not in Spreadsheet::WriteExcel.
     data_validation()           Yes
     conditional_formatting()    Yes. Not in Spreadsheet::WriteExcel.
+    add_table()                 Yes. Not in Spreadsheet::WriteExcel.
     get_name()                  Yes
     activate()                  Yes
     select()                    Yes
@@ -5482,13 +5837,57 @@ Perl 5.8.2.
 
 C<Spreadsheet::WriteExcel> was written to optimise speed and reduce memory usage. However, these design goals meant that it wasn't easy to implement features that many users requested such as writing formatting and data separately.
 
-As a result C<Excel::Writer::XLSX> takes a different design approach and holds a lot more data in memory so that it is functionally more flexible. The effect of this is that Excel::Writer::XLSX is about 50% slower than Spreadsheet::WriteExcel and can use significantly more memory. When you add to this the extended row and column ranges it is possible to run out of memory creating very large files. This was almost never an issue with Spreadsheet::WriteExcel.
+As a result C<Excel::Writer::XLSX> takes a different design approach and holds a lot more data in memory so that it is functionally more flexible.
+
+The effect of this is that Excel::Writer::XLSX is about 30% slower than Spreadsheet::WriteExcel and uses 5 times more memory.
+
+In addition the extended row and column ranges in Excel 2007+ mean that it is possible to run out of memory creating large files. This was almost never an issue with Spreadsheet::WriteExcel.
 
 This memory usage can be reduced almost completely by using the Workbook C<set_optimization()> method:
 
     $workbook->set_optimization();
 
-The trade-off is that you won't be able to take advantage of any new features that manipulate cell data, after it is written, with this optimization turned on.
+This also gives an increase in performance to within 1-10% of Spreadsheet::WriteExcel, see below.
+
+The trade-off is that you won't be able to take advantage of any new features that manipulate cell data after it is written. One such feature is Tables.
+
+
+=head2 Performance figures
+
+The performance figures below show execution speed and memory usage for 60 columns x N rows for a 50/50 mixture of strings and numbers. Percentage speeds are relative to Spreadsheet::WriteExcel.
+
+    Excel::Writer::XLSX
+         Rows  Time (s)    Memory (bytes)  Rel. Time
+          400      0.66         6,586,254       129%
+          800      1.26        13,099,422       125%
+         1600      2.55        26,126,361       123%
+         3200      5.16        52,211,284       125%
+         6400     10.47       104,401,428       128%
+        12800     21.48       208,784,519       131%
+        25600     43.90       417,700,746       126%
+        51200     88.52       835,900,298       126%
+
+    Excel::Writer::XLSX + set_optimisation()
+         Rows  Time (s)    Memory (bytes)  Rel. Time
+          400      0.70            63,059       135%
+          800      1.10            63,059       110%
+         1600      2.30            63,062       111%
+         3200      4.44            63,062       107%
+         6400      8.91            63,062       109%
+        12800     17.69            63,065       108%
+        25600     35.15            63,065       101%
+        51200     70.67            63,065       101%
+
+    Spreadsheet::WriteExcel
+         Rows  Time (s)    Memory (bytes)
+          400      0.51         1,265,583
+          800      1.01         2,424,855
+         1600      2.07         4,743,400
+         3200      4.14         9,411,139
+         6400      8.20        18,766,915
+        12800     16.39        37,478,468
+        25600     34.72        75,044,423
+        51200     70.21       150,543,431
 
 
 =head1 DOWNLOADING
@@ -5547,49 +5946,25 @@ Depending on your requirements, background and general sensibilities you may pre
 
 This module is the precursor to Excel::Writer::XLSX and uses the same interface. It produces files in the Excel Biff xls format that was used in Excel versions 97-2003. These files can still be read by Excel 2007 but have some limitations in relation to the number of rows and columns that the format supports.
 
+L<Spreadsheet::WriteExcel>.
+
 =item * Win32::OLE module and office automation
 
-This requires a Windows platform and an installed copy of Excel. This is the most powerful and complete method for interfacing with Excel. See L<http://www.activestate.com/ASPN/Reference/Products/ActivePerl-5.6/faq/Windows/ActivePerl-Winfaq12.html> and L<http://www.activestate.com/ASPN/Reference/Products/ActivePerl-5.6/site/lib/Win32/OLE.html>. If your main platform is UNIX but you have the resources to set up a separate Win32/MSOffice server, you can convert office documents to text, postscript or PDF using Win32::OLE. For a demonstration of how to do this using Perl see Docserver: L<http://search.cpan.org/search?mode=module&query=docserver>.
+This requires a Windows platform and an installed copy of Excel. This is the most powerful and complete method for interfacing with Excel.
+
+L<Win32::OLE>
 
 =item * CSV, comma separated variables or text
 
-If the file extension is C<csv>, Excel will open and convert this format automatically. Generating a valid CSV file isn't as easy as it seems. Have a look at the DBD::RAM, DBD::CSV, Text::xSV and Text::CSV_XS modules.
+Excel will open and automatically convert files with a C<csv> extension.
+
+To create CSV files refer to the L<Text::CSV_XS> module.
+
 
 =item * DBI with DBD::ADO or DBD::ODBC
 
 Excel files contain an internal index table that allows them to act like a database file. Using one of the standard Perl database modules you can connect to an Excel file as a database.
 
-=item * DBD::Excel
-
-You can also access Spreadsheet::WriteExcel using the standard DBI interface via Takanori Kawai's DBD::Excel module L<http://search.cpan.org/dist/DBD-Excel>
-
-=item * Spreadsheet::WriteExcelXML
-
-This module allows you to create an Excel XML file using the same interface as Spreadsheet::WriteExcel. See: L<http://search.cpan.org/dist/Spreadsheet-WriteExcelXML>
-
-=item * Excel::Template
-
-This module allows you to create an Excel file from an XML template in a manner similar to HTML::Template. See L<http://search.cpan.org/dist/Excel-Template/>.
-
-=item * Spreadsheet::WriteExcel::FromXML
-
-This module allows you to turn a simple XML file into an Excel file using Spreadsheet::WriteExcel as a back-end. The format of the XML file is defined by a supplied DTD: L<http://search.cpan.org/dist/Spreadsheet-WriteExcel-FromXML>.
-
-=item * Spreadsheet::WriteExcel::Simple
-
-This provides an easier interface to Spreadsheet::WriteExcel: L<http://search.cpan.org/dist/Spreadsheet-WriteExcel-Simple>.
-
-=item * Spreadsheet::WriteExcel::FromDB
-
-This is a useful module for creating Excel files directly from a DB table: L<http://search.cpan.org/dist/Spreadsheet-WriteExcel-FromDB>.
-
-=item * HTML tables
-
-This is an easy way of adding formatting via a text based format.
-
-=item * XML or HTML
-
-The Excel XML and HTML file specification are available from L<http://msdn.microsoft.com/library/officedev/ofxml2k/ofxml2k.htm>.
 
 =back
 
@@ -5604,58 +5979,53 @@ To read data from Excel files try:
 
 =over 4
 
+=item * Spreadsheet::XLSX
+
+A module for reading formatted or unformatted data form XLSX files.
+
+L<Spreadsheet::XLSX>
+
+=item * SimpleXlsx
+
+A lightweight module for reading data from XLSX files.
+
+L<SimpleXlsx>
+
 =item * Spreadsheet::ParseExcel
 
-This uses the OLE::Storage-Lite module to extract data from an Excel file. L<http://search.cpan.org/dist/Spreadsheet-ParseExcel>.
+This module can read  data from an Excel XLS file but it doesn't support the XLSX format.
 
-=item * Spreadsheet::ParseExcel_XLHTML
-
-This module uses Spreadsheet::ParseExcel's interface but uses xlHtml (see below) to do the conversion: L<http://search.cpan.org/dist/Spreadsheet-ParseExcel_XLHTML>
-Spreadsheet::ParseExcel_XLHTML
-
-=item * xlHtml
-
-This is an open source "Excel to HTML Converter" C/C++ project at L<http://chicago.sourceforge.net/xlhtml/>.
-
-=item * DBD::Excel (reading)
-
-You can also access Spreadsheet::ParseExcel using the standard DBI interface via Takanori Kawai's DBD::Excel module L<http://search.cpan.org/dist/DBD-Excel>.
+L<Spreadsheet::ParseExcel>
 
 =item * Win32::OLE module and office automation (reading)
 
-See, the section L<WRITING EXCEL FILES>.
-
-=item * HTML tables (reading)
-
-If the files are saved from Excel in a HTML format the data can be accessed using HTML::TableExtract L<http://search.cpan.org/dist/HTML-TableExtract>.
+See above.
 
 =item * DBI with DBD::ADO or DBD::ODBC.
 
-See, the section L<WRITING EXCEL FILES>.
-
-=item * XML::Excel
-
-Converts Excel files to XML using Spreadsheet::ParseExcel L<http://search.cpan.org/dist/XML-Excel>.
-
-=item * OLE::Storage, aka LAOLA
-
-This is a Perl interface to OLE file formats. In particular, the distro contains an Excel to HTML converter called Herbert, L<http://user.cs.tu-berlin.de/~schwartz/pmh/>. This has been superseded by the Spreadsheet::ParseExcel module.
+See above.
 
 =back
 
 
 For other Perl-Excel modules try the following search: L<http://search.cpan.org/search?mode=module&query=excel>.
 
-If you wish to view Excel files on a UNIX/Linux platform check out the excellent Gnumeric spreadsheet application at L<http://www.gnome.org/projects/gnumeric/> or OpenOffice.org at L<http://www.openoffice.org/>.
-
-If you wish to view Excel files on a Windows platform which doesn't have Excel installed you can use the free Microsoft Excel Viewer L<http://office.microsoft.com/downloads/2000/xlviewer.aspx>.
-
-
-
 
 =head1 BUGS
 
-Some versions of Excel 2007 do not display the calculated values of formulas written by Excel::Writer::XLSX. Applying all available Service Packs to Excel should fix this.
+=over
+
+=item * Zero values for formulas results.
+
+Some versions of Excel 2007 do not display the calculated values of formulas written by Excel::Writer::XLSX. This is a bug in Excel since Excel::Writer::XLSX sets the required flag for recalculating formulas on opening.
+
+Applying all available Service Packs to Excel should fix this. Alternatively you can supply calculated values for all formulas that you write.
+
+=item * Memory usage is very high for large worksheets.
+
+If you run out of memory creating large worksheets use the C<set_optimization()> method. See L</SPEED AND MEMORY USAGE> for more information.
+
+=item * Perl packaging programs can't find chart modules.
 
 When using Excel::Writer::XLSX charts with Perl packagers such as PAR or Cava you should explicitly include the chart that you are trying to create in your C<use> statements. This isn't a bug as such but it might help someone from banging their head off a wall:
 
@@ -5664,9 +6034,15 @@ When using Excel::Writer::XLSX charts with Perl packagers such as PAR or Cava yo
     use Excel::Writer::XLSX::Chart::Column;
     ...
 
-Formulas are formulae.
+=back
+
 
 If you wish to submit a bug report run the C<bug_report.pl> program in the C<examples> directory of the distro.
+
+
+
+
+The bug tracker is on Github: L<https://github.com/jmcnamara/excel-writer-xlsx/issues>.
 
 
 =head1 TO DO
@@ -5702,23 +6078,6 @@ The Excel::Writer::XLSX source code in host on github: L<http://github.com/jmcna
 
 There is a Google group for discussing and asking questions about Excel::Writer::XLSX. This is a good place to search to see if your question has been asked before:  L<http://groups.google.com/group/spreadsheet-writeexcel>.
 
-=begin html
-
-<center>
-<table style="background-color: #fff; padding: 5px;" cellspacing="0">
-  <tr><td>
-  <img src="http://groups.google.com/intl/en/images/logos/groups_logo_sm.gif"
-         height="30" width="140" alt="Google Groups"/>
-  </td></tr>
-  <tr><td>
-  <a href="http://groups.google.com/group/spreadsheet-writeexcel">Excel::Writer::XLSX</a>
-  </td></tr>
-</table>
-</center>
-
-=end html
-
-
 
 
 
@@ -5735,17 +6094,7 @@ Spreadsheet::WriteExcel: L<http://search.cpan.org/dist/Spreadsheet-WriteExcel>.
 
 Spreadsheet::ParseExcel: L<http://search.cpan.org/dist/Spreadsheet-ParseExcel>.
 
-Spreadsheet-WriteExcel-FromXML: L<http://search.cpan.org/dist/Spreadsheet-WriteExcel-FromXML>.
-
-Spreadsheet::WriteExcel::FromDB: L<http://search.cpan.org/dist/Spreadsheet-WriteExcel-FromDB>.
-
-Excel::Template: L<http://search.cpan.org/~rkinyon/Excel-Template/>.
-
-DateTime::Format::Excel: L<http://search.cpan.org/dist/DateTime-Format-Excel>.
-
-
-The csv2xls program that is part of Text::CSV_XS:
-L<http://search.cpan.org/~hmbrand/Text-CSV_XS/MANIFEST>.
+Spreadsheet::XLSX: L<http://search.cpan.org/dist/Spreadsheet-XLSX>.
 
 
 
@@ -5755,6 +6104,8 @@ L<http://search.cpan.org/~hmbrand/Text-CSV_XS/MANIFEST>.
 The following people contributed to the debugging and testing of Excel::Writer::XLSX:
 
 Rob Messer of IntelliSurvey gave me the initial prompt to port Spreadsheet::WriteExcel to the XLSX format. IntelliSurvey also sponsored large files optimisations and the charting feature.
+
+Eric Johnson provided the ability to use secondary axes with charts.  Thanks to Foxtons (L<http://foxtons.co.uk>) for sponsoring this work.
 
 
 
@@ -5779,25 +6130,17 @@ Either the Perl Artistic Licence L<http://dev.perl.org/licenses/artistic.html> o
 
 John McNamara jmcnamara@cpan.org
 
-    An ancient business
-    A modern piece of glass work
-    Down on the corner that you walk each day in passing
-    The elderly sales clerk won't eye us with suspicion
-    The whole, immortal corporation's given its permission
+    The ashtray says
+    You were up all night.
+    When you went to bed
+    With your darkest mind.
+    Your pillow wept
+    And covered your eyes.
+    And you finally slept
+    While the sun caught fire.
 
-    A little stairway
-    A little bit of carpet
-    A pair of mirrors that
-    Are facing one another
-    Out in both directions
-    A thousand little Julias
-    That come together
-    In the middle of Manhattan
-
-    You waited since lunch
-    It all comes at once
-
-      -- Vampire Weekend
+    You've changed.
+      -- Jeff Tweedy
 
 
 

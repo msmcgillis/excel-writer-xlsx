@@ -1,4 +1,4 @@
-package Excel::Writer::XLSX::Workbook;
+﻿package Excel::Writer::XLSX::Workbook;
 
 ###############################################################################
 #
@@ -26,13 +26,14 @@ use Archive::Zip;
 use Excel::Writer::XLSX::Worksheet;
 use Excel::Writer::XLSX::Chartsheet;
 use Excel::Writer::XLSX::Format;
+use Excel::Writer::XLSX::Shape;
 use Excel::Writer::XLSX::Chart;
 use Excel::Writer::XLSX::Package::Packager;
 use Excel::Writer::XLSX::Package::XMLwriter;
 use Excel::Writer::XLSX::Utility qw(xl_cell_to_rowcol xl_rowcol_to_cell);
 
 our @ISA     = qw(Excel::Writer::XLSX::Package::XMLwriter);
-our $VERSION = '0.47';
+our $VERSION = '0.51';
 
 
 ###############################################################################
@@ -90,6 +91,7 @@ sub new {
     $self->{_window_width}       = 16095;
     $self->{_window_height}      = 9660;
     $self->{_tab_ratio}          = 500;
+    $self->{_table_count}        = 0;
 
 
 
@@ -313,10 +315,13 @@ sub add_worksheet {
         \$self->{_str_unique},
         \$self->{_str_table},
 
+        \$self->{_table_count},
+
         $self->{_1904},
         $self->{_palette},
         $self->{_optimization},
         $self->{_tempdir},
+
     );
 
     my $worksheet = Excel::Writer::XLSX::Worksheet->new( @init_data );
@@ -367,6 +372,8 @@ sub add_chart {
         \$self->{_str_unique},
         \$self->{_str_table},
 
+        \$self->{_table_count},
+
         $self->{_1904},
         $self->{_palette},
         $self->{_optimization},
@@ -398,6 +405,9 @@ sub add_chart {
         return $chartsheet;
     }
     else {
+
+        # Set the embedded chart name if present.
+        $chart->{_chart_name} = $arg{name} if $arg{name};
 
         # Set index to 0 so that the activate() and set_first_sheet() methods
         # point back to the first worksheet if used for embedded charts.
@@ -491,6 +501,25 @@ sub add_format {
     return $format;
 }
 
+
+###############################################################################
+#
+# add_shape(%properties)
+#
+# Add a new shape to the Excel workbook.
+#
+sub add_shape {
+
+    my $self = shift;
+    my $shape = Excel::Writer::XLSX::Shape->new( @_ );
+
+    $shape->{_palette} = $self->{_palette};
+
+
+    push @{ $self->{_shapes} }, $shape;    # Store shape reference.
+
+    return $shape;
+}
 
 ###############################################################################
 #
@@ -1143,6 +1172,20 @@ sub _prepare_fills {
     $fills{'0:0:0'}  = 0;
     $fills{'17:0:0'} = 1;
 
+
+    # Store the DXF colours separately since them may be reversed below.
+    for my $format ( @{ $self->{_dxf_formats} } ) {
+        if (   $format->{_pattern}
+            || $format->{_bg_color}
+            || $format->{_fg_color} )
+        {
+            $format->{_has_dxf_fill} = 1;
+            $format->{_dxf_bg_color} = $format->{_bg_color};
+            $format->{_dxf_fg_color} = $format->{_fg_color};
+        }
+    }
+
+
     for my $format ( @{ $self->{_xf_formats} } ) {
 
         # The following logical statements jointly take care of special cases
@@ -1153,9 +1196,18 @@ sub _prepare_fills {
         #    a pattern they probably wanted a solid fill, so we fill in the
         #    defaults.
         #
+        if (   $format->{_pattern}  == 1
+            && $format->{_bg_color} ne '0'
+            && $format->{_fg_color} ne '0' )
+        {
+            my $tmp = $format->{_fg_color};
+            $format->{_fg_color} = $format->{_bg_color};
+            $format->{_bg_color} = $tmp;
+        }
+
         if (   $format->{_pattern} <= 1
-            && $format->{_bg_color} != 0
-            && $format->{_fg_color} == 0 )
+            && $format->{_bg_color} ne '0'
+            && $format->{_fg_color} eq '0' )
         {
             $format->{_fg_color} = $format->{_bg_color};
             $format->{_bg_color} = 0;
@@ -1163,12 +1215,13 @@ sub _prepare_fills {
         }
 
         if (   $format->{_pattern} <= 1
-            && $format->{_bg_color} == 0
-            && $format->{_fg_color} != 0 )
+            && $format->{_bg_color} eq '0'
+            && $format->{_fg_color} ne '0' )
         {
             $format->{_bg_color} = 0;
             $format->{_pattern}  = 1;
         }
+
 
         my $key = $format->get_fill_key();
 
@@ -1191,16 +1244,6 @@ sub _prepare_fills {
     $self->{_fill_count} = $index;
 
 
-    # For the DXF formats we only need to check if the properties have changed.
-    for my $format ( @{ $self->{_dxf_formats} } ) {
-
-        if (   $format->{_pattern}
-            || $format->{_bg_color}
-            || $format->{_fg_color} )
-        {
-            $format->{_has_dxf_fill} = 1;
-        }
-    }
 }
 
 
@@ -1382,7 +1425,10 @@ sub _prepare_drawings {
 
         my $chart_count = scalar @{ $sheet->{_charts} };
         my $image_count = scalar @{ $sheet->{_images} };
-        next unless ( $chart_count + $image_count );
+        my $shape_count = scalar @{ $sheet->{_shapes} };
+        next unless ( $chart_count + $image_count + $shape_count);
+
+        $sheet->_sort_charts();
 
         $drawing_id++;
 
@@ -1402,6 +1448,10 @@ sub _prepare_drawings {
 
             $sheet->_prepare_image( $index, $image_ref_id, $drawing_id, $width,
                 $height, $name, $type );
+        }
+
+        for my $index ( 0 .. $shape_count - 1 ) {
+            $sheet->_prepare_shape( $index, $drawing_id );
         }
 
         my $drawing = $sheet->{_drawing};
@@ -1504,8 +1554,12 @@ sub _add_chart_data {
             # Skip if we couldn't parse the formula.
             next RANGE if !defined $sheetname;
 
-            # Skip if the name is unknown. Probably should throw exception.
-            next RANGE if !exists $worksheets{$sheetname};
+            # Die if the name is unknown since it indicates a user error in
+            # a chart series formula.
+            if ( !exists $worksheets{$sheetname} ) {
+                die "Unknown worksheet reference '$sheetname' in range "
+                  . "'$range' passed to add_series().\n";
+            }
 
             # Find the worksheet object based on the sheet name.
             my $worksheet = $worksheets{$sheetname};
@@ -2074,7 +2128,7 @@ sub _write_sheet {
     push @attributes, ( 'r:id' => $r_id );
 
 
-    $self->{_writer}->emptyTag( 'sheet', @attributes );
+    $self->{_writer}->emptyTagEncoded( 'sheet', @attributes );
 }
 
 

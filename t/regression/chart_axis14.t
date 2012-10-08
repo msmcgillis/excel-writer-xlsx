@@ -44,7 +44,7 @@ my $chart       = $workbook->add_chart( type => 'stock', embedded => 1 );
 my $date_format = $workbook->add_format( num_format => 14 );
 
 # For testing, copy the randomly generated axis ids in the target xlsx file.
-$chart->{_axis_ids}[0] = [ 43814272, 54517760 ];
+$chart->{_axis_ids} = [ 43814272, 54517760 ];
 
 my $data = [
 

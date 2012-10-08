@@ -22,7 +22,7 @@ use Carp;
 use Excel::Writer::XLSX::Chart;
 
 our @ISA     = qw(Excel::Writer::XLSX::Chart);
-our $VERSION = '0.47';
+our $VERSION = '0.51';
 
 
 ###############################################################################
@@ -53,7 +53,7 @@ sub _write_chart_type {
     my $self = shift;
 
     # Write the c:pieChart element.
-    $self->_write_pie_chart();
+    $self->_write_pie_chart( @_ );
 }
 
 
@@ -61,28 +61,25 @@ sub _write_chart_type {
 #
 # _write_pie_chart()
 #
-# Write the <c:pieChart> element.
+# Write the <c:pieChart> element.  Over-ridden method to remove axis_id code
+# since Pie charts don't require val and cat axes.
 #
 sub _write_pie_chart {
 
     my $self = shift;
 
-    for (my $plane=0;$plane<=$#{$self->{_series}};$plane++) {
+    $self->{_writer}->startTag( 'c:pieChart' );
 
-        $self->{_writer}->startTag( 'c:pieChart' );
+    # Write the c:varyColors element.
+    $self->_write_vary_colors();
 
-        # Write the c:varyColors element.
-        $self->_write_vary_colors();
+    # Write the series elements.
+    $self->_write_ser( $_ ) for @{ $self->{_series} };
 
-        # Write the series elements.
-        $self->_write_series($plane);
+    # Write the c:firstSliceAng element.
+    $self->_write_first_slice_ang();
 
-        # Write the c:firstSliceAng element.
-        $self->_write_first_slice_ang();
-
-        $self->{_writer}->endTag( 'c:pieChart' );
-
-    }
+    $self->{_writer}->endTag( 'c:pieChart' );
 }
 
 
@@ -113,28 +110,6 @@ sub _write_plot_area {
 
 ##############################################################################
 #
-# _write_series().
-#
-# Over-ridden method to remove axis_id code since Pie charts  don't require
-# val and cat axes.
-#
-# Write the series elements.
-#
-sub _write_series {
-
-    my $self  = shift;
-    my $plane = shift;
-
-    # Write each series with subelements.
-    for my $series ( @{ $self->{_series}[$plane] } ) {
-        $self->_write_ser( $series );
-    }
-}
-
-
-
-##############################################################################
-#
 # _write_legend().
 #
 # Over-ridden method to add <c:txPr> to legend.
@@ -143,11 +118,11 @@ sub _write_series {
 #
 sub _write_legend {
 
-    my $self = shift;
+    my $self     = shift;
     my $position = $self->{_legend_position};
-    my $overlay = 0;
+    my $overlay  = 0;
 
-    if ($position =~ s/^overlay_//) {
+    if ( $position =~ s/^overlay_// ) {
         $overlay = 1;
     }
 
@@ -179,7 +154,6 @@ sub _write_legend {
 
     $self->{_writer}->endTag( 'c:legend' );
 }
-
 
 
 ##############################################################################

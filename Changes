@@ -1,8 +1,104 @@
 Revision history for Perl module Excel::Writer::XLSX.
 
-+ New feature.
-- Removed/deprecated feature.
-! Bug fix.
+     + New feature/improvement.
+     - Removed/deprecated feature.
+     ! Bug fix.
+
+
+
+
+0.51 September 16 2012
+
+    + Speed optimisations.
+
+      This release contains a series of optimisations aimed
+      at increasing the speed of Excel::Writer::XLSX. The
+      overall improvement is around 66%.
+      See the SPEED AND MEMORY USAGE section of the documentation.
+
+    + Memory usage optimisations.
+
+      This fixes an issue where the memory used for the worksheet
+      data tables was freed but then brought back into usage due
+      to the use of an array as the base data structure. This
+      meant that the memory usage still continued to grow with
+      large row counts.
+
+
+    ! Added warning about Excel limit to 65,530 urls per worksheet.
+
+    ! Limit URLs to Excel's limit of 255 chars. Fixes Issue #26.
+
+    ! Fix for whitespace in urls. Fixes Issue #25.
+
+    ! Fix for solid fill of type 'none' is chart series.
+      Closes issue #27 reported on Stack Overflow.
+
+    ! Modified write_array_formula() to apply format over full range.
+      Fixes issue #18.
+
+    ! Fix for issue with chart formula referring to non-existent sheet name.
+      It is now a fatal error to specify a chart series formula that
+      refers to an non-existent worksheet name. Fixes issue #17.
+
+
+0.50 September 9 2012
+
+     + Added option to add secondary axes to charts.
+       Thanks to Eric Johnson and to Foxtons for sponsoring the work.
+
+     + Added add_table() method to add Excel tables to worksheets.
+
+     ! Fix for right/left auto shape connection when destination
+       is left of source shape. Thanks to Dave Clarke for fix.
+
+     ! Fix for issue #16. Format::copy() method not protecting values.
+       The Format copy() method over-writes certain new properties that
+       weren't in Spreadsheet::WriteExcel. This fixes the issue by
+       storing and restoring the properties during copy.
+
+     ! Fix for issue #15: write_url with local sub directory.
+       Local sub-directories were incorrectly treated as
+       file:// external.
+
+     ! Fix for for issue #14: Non-numeric data in chart value axes
+       are now converted to zero in chart data cache, as required
+       by Excel.
+
+
+0.49 July 12 2012
+
+    + Added show_blanks_as() chart method to control the display of
+      blank data.
+
+    + Added show_hidden_data() chart method to control the display of
+      data in hidden rows and columns.
+
+    ! Added fix for fg/bg colours in conditional formats which are
+      shared with cell formats.
+      Reported by Patryk Kwiatkowski.
+
+    ! Fix for xl_parse_time() with hours > 24. Github issue #11.
+
+    ! Fixed lc() warning in Utility.pm in recent perls. Github issue #10.
+
+    ! Fixed issue with non-integer shape dimensions. Thanks Dave Clarke.
+
+    ! Fixed error handling for shape connectors. Thanks Dave Clarke.
+
+
+0.48 June 25 2012
+
+    + Added worksheet shapes. A major new feature.
+      Patch, docs, tests and example programs by Dave Clarke.
+
+    + Added stacked and percent_stacked chart subtypes to Area charts.
+
+    ! Added fix for chart names in embedded charts.
+      Reported by Matt Freel.
+
+    ! Fixed bug with Unicode characters in rich strings.
+      Reported by Michiel van Rhee.
 
 
 0.47 April 10 2012
@@ -14,12 +110,12 @@ Revision history for Perl module Excel::Writer::XLSX.
     + Additional chart data label parameters such as position, leader lines
       and percentage. Initial patch by George E. Tarrant III.
 
-    ! Fixed for Autofilter filter_column() offset bug reported by 
+    ! Fixed for Autofilter filter_column() offset bug reported by
       Krishna Rajendran.
 
     ! Fix for write_url() where url contains invalid whitespace, RT #75808,
       reported by Oleg G. The write_url() method now throws a warning and
-      rejects the invalid url to avoid file corruption. 
+      rejects the invalid url to avoid file corruption.
 
 0.46 February 10 2012
 
@@ -148,7 +244,7 @@ Revision history for Perl module Excel::Writer::XLSX.
 0.29 October 5 2011
 
     + Added the merge_range_type() method for finer control over the types
-      writen using merge_range().
+      written using merge_range().
 
 
 0.28 October 4 2011
@@ -398,4 +494,3 @@ Revision history for Perl module Excel::Writer::XLSX.
 0.01 October 11 2010
 
     First CPAN release.
-

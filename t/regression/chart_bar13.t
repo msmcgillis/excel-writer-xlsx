@@ -41,8 +41,8 @@ my $chart2     = $workbook->add_chart( type => 'bar' );
 my $worksheet4 = $workbook->add_worksheet();
 
 # For testing, copy the randomly generated axis ids in the target xlsx file.
-$chart1->{_chart}->{_axis_ids}[0] = [ 40294272, 40295808 ];
-$chart2->{_chart}->{_axis_ids}[0] = [ 62356096, 62366080 ];
+$chart1->{_chart}->{_axis_ids} = [ 40294272, 40295808 ];
+$chart2->{_chart}->{_axis_ids} = [ 62356096, 62366080 ];
 
 my $data = [
     [ 1, 2, 3, 4,  5 ],

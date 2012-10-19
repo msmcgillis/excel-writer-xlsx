@@ -54,12 +54,12 @@ $chart->add_series( values => '=Sheet1!$C$1:$C$5' );
 
 $chart->set_title( name=>"Testing",
                    font=>{
-                       typeface  => "Helvetica",
+                       name      => "Helvetica",
                        color     => "blue",
                        size      => "32",
                        bold      => 1,
                        italic    => 1,
-                       underline => "sng"});
+                       underline => 1});
 
 $worksheet->insert_chart( 'E9', $chart );
 

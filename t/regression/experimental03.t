@@ -53,12 +53,12 @@ $chart->add_series( values => '=Sheet1!$B$1:$B$5' );
 $chart->add_series( values => '=Sheet1!$C$1:$C$5' );
 
 $chart->set_legend( font=>{
-                       typeface  => "Helvetica",
+                       name      => "Helvetica",
                        color     => "blue",
                        size      => "9",
                        bold      => 1,
                        italic    => 1,
-                       underline => "sng"});
+                       underline => 1});
 
 $worksheet->insert_chart( 'E9', $chart );
 

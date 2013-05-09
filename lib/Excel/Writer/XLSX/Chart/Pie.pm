@@ -199,7 +199,7 @@ sub _write_a_p_legend {
     $self->_write_a_p_pr_legend();
 
     # Write the a:endParaRPr element.
-    $self->_write_a_end_para_rpr( 'en-US' );
+    $self->_write_a_end_para_rpr();
 
     $self->xml_end_tag( 'a:p' );
 }

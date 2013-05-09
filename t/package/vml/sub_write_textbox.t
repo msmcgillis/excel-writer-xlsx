@@ -2,7 +2,7 @@
 #
 # Tests for Excel::Writer::XLSX::Package::VML methods.
 #
-# reverse('(c)'), September 2011, John McNamara, jmcnamara@cpan.org
+# reverse ('(c)'), September 2011, John McNamara, jmcnamara@cpan.org
 #
 
 use lib 't/lib';
@@ -33,7 +33,7 @@ $expected = '<v:textbox style="mso-direction-alt:auto"><div style="text-align:le
 
 $vml = _new_object( \$got, 'Excel::Writer::XLSX::Package::VML' );
 
-$vml->_write_textbox();
+$vml->_write_comment_textbox();
 
 is( $got, $expected, $caption );
 

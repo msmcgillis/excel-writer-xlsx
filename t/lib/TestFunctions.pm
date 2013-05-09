@@ -4,7 +4,7 @@ package TestFunctions;
 #
 # TestFunctions - Helper functions for Excel::Writer::XLSX test cases.
 #
-# reverse('�'), September 2010, John McNamara, jmcnamara@cpan.org
+# reverse ('(c)'), September 2010, John McNamara, jmcnamara@cpan.org
 #
 
 use 5.008002;
@@ -237,6 +237,12 @@ sub _compare_xlsx_files {
             $exp_xml_str =~ s/horizontalDpi="200" //;
             $exp_xml_str =~ s/verticalDpi="200" //;
             $exp_xml_str =~ s/(<pageSetup.*) r:id="rId1"/$1/;
+        }
+
+        # Remove Chart pageMargin dimensions which are almost always different.
+        if ( $filename =~ m(xl/charts/chart\d.xml) ) {
+            $exp_xml_str =~ s{<c:pageMargins[^>]*>}{<c:pageMargins/>};
+            $got_xml_str =~ s{<c:pageMargins[^>]*>}{<c:pageMargins/>};
         }
 
         if ( $filename =~ /.vml$/ ) {

@@ -8,7 +8,7 @@ package Excel::Writer::XLSX::Chart::Bar;
 #
 # See formatting note in Excel::Writer::XLSX::Chart.
 #
-# Copyright 2000-2012, John McNamara, jmcnamara@cpan.org
+# Copyright 2000-2013, John McNamara, jmcnamara@cpan.org
 #
 # Documentation after __END__
 #
@@ -22,7 +22,7 @@ use Carp;
 use Excel::Writer::XLSX::Chart;
 
 our @ISA     = qw(Excel::Writer::XLSX::Chart);
-our $VERSION = '0.53';
+our $VERSION = '0.67';
 
 
 ###############################################################################
@@ -42,8 +42,18 @@ sub new {
     $self->{_horiz_cat_axis}    = 1;
     $self->{_show_crosses}      = 0;
 
-    bless $self, $class;
+    # Override and reset the default axis values.
+    $self->{_x_axis}->{_defaults}->{major_gridlines} = { visible => 1 };
+    $self->{_y_axis}->{_defaults}->{major_gridlines} = { visible => 0 };
 
+    if ( $self->{_subtype} eq 'percent_stacked' ) {
+        $self->{_x_axis}->{_defaults}->{num_format} = '0%';
+    }
+
+    $self->set_x_axis();
+    $self->set_y_axis();
+
+    bless $self, $class;
     return $self;
 }
 
@@ -60,16 +70,11 @@ sub _write_chart_type {
     my %args = @_;
 
     if ( $args{primary_axes} ) {
-        ## Reverse X and Y axes for Bar charts.
-        my $old_y = $self->{_y_axis};
-        my $old_x = $self->{_x_axis};
 
-        $self->{_y_axis} = $old_x;
-        $self->{_x_axis} = $old_y;
-
-        if ( !$self->{_y_axis}->{_major_gridlines} ) {
-            $self->{_y_axis}->{_major_gridlines} = { show => 1 };
-        }
+        # Reverse X and Y axes for Bar charts.
+        my $tmp = $self->{_y_axis};
+        $self->{_y_axis} = $self->{_x_axis};
+        $self->{_x_axis} = $tmp;
 
         if ( $self->{_y2_axis}->{_position} eq 'r' ) {
             $self->{_y2_axis}->{_position} = 't';
@@ -105,6 +110,13 @@ sub _write_bar_chart {
     my $subtype = $self->{_subtype};
     $subtype = 'percentStacked' if $subtype eq 'percent_stacked';
 
+    # Set a default overlap for stacked charts.
+    if ($self->{_subtype} =~ /stacked/) {
+        if (!defined $self->{_series_overlap}) {
+            $self->{_series_overlap} = 100;
+        }
+    }
+
     $self->xml_start_tag( 'c:barChart' );
 
     # Write the c:barDir element.
@@ -119,8 +131,11 @@ sub _write_bar_chart {
     # Write the c:marker element.
     $self->_write_marker_value();
 
+    # Write the c:gapWidth element.
+    $self->_write_gap_width( $self->{_series_gap} );
+
     # Write the c:overlap element.
-    $self->_write_overlap() if $self->{_subtype} =~ /stacked/;
+    $self->_write_overlap( $self->{_series_overlap} );
 
     # Write the c:axId elements
     $self->_write_axis_ids( %args );
@@ -145,6 +160,15 @@ sub _write_bar_dir {
     $self->xml_empty_tag( 'c:barDir', @attributes );
 }
 
+
+##############################################################################
+#
+# _write_err_dir()
+#
+# Write the <c:errDir> element. Overridden from Chart class since it is not
+# used in Bar charts.
+#
+sub _write_err_dir {}
 
 1;
 
@@ -275,7 +299,7 @@ Here is a complete example that demonstrates most of the available features when
 
 <p>This will produce a chart that looks like this:</p>
 
-<p><center><img src="http://homepage.eircom.net/~jmcnamara/perl/images/2007/bar1.jpg" width="483" height="291" alt="Chart example." /></center></p>
+<p><center><img src="http://jmcnamara.github.com/excel-writer-xlsx/images/examples/bar1.jpg" width="483" height="291" alt="Chart example." /></center></p>
 
 =end html
 
@@ -286,7 +310,7 @@ John McNamara jmcnamara@cpan.org
 
 =head1 COPYRIGHT
 
-Copyright MM-MMXII, John McNamara.
+Copyright MM-MMXIII, John McNamara.
 
 All Rights Reserved. This module is free software. It may be used, redistributed and/or modified under the same terms as Perl itself.
 

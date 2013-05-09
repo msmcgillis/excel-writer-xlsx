@@ -2,7 +2,7 @@
 #
 # Tests the output of Excel::Writer::XLSX against Excel generated files.
 #
-# reverse('©'), January 2011, John McNamara, jmcnamara@cpan.org
+# reverse ('(c)'), January 2011, John McNamara, jmcnamara@cpan.org
 #
 
 use lib 't/lib';
@@ -68,8 +68,8 @@ $chart2->add_series( values => '=Sheet1!$A$1:$A$5' );
 $chart2->add_series( values => '=Sheet1!$B$1:$B$5' );
 $chart2->add_series( values => '=Sheet1!$C$1:$C$5' );
 
-$worksheet->insert_chart( 'E24', $chart2 );
 $worksheet->insert_chart( 'E9',  $chart1 );
+$worksheet->insert_chart( 'E24', $chart2 );
 
 $workbook->close();
 

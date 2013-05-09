@@ -8,7 +8,7 @@ package Excel::Writer::XLSX::Chart::Area;
 #
 # See formatting note in Excel::Writer::XLSX::Chart.
 #
-# Copyright 2000-2012, John McNamara, jmcnamara@cpan.org
+# Copyright 2000-2013, John McNamara, jmcnamara@cpan.org
 #
 # Documentation after __END__
 #
@@ -22,7 +22,7 @@ use Carp;
 use Excel::Writer::XLSX::Chart;
 
 our @ISA     = qw(Excel::Writer::XLSX::Chart);
-our $VERSION = '0.53';
+our $VERSION = '0.67';
 
 
 ###############################################################################
@@ -38,6 +38,13 @@ sub new {
     $self->{_subtype}       = $self->{_subtype} || 'standard';
     $self->{_cross_between} = 'midCat';
     $self->{_show_crosses}  = 0;
+
+    # Override and reset the default axis values.
+    if ( $self->{_subtype} eq 'percent_stacked' ) {
+        $self->{_y_axis}->{_defaults}->{num_format} = '0%';
+    }
+
+    $self->set_y_axis();
 
     bless $self, $class;
     return $self;
@@ -92,6 +99,9 @@ sub _write_area_chart {
     # Write the series elements.
     $self->_write_series( $_ ) for @series;
 
+    # Write the c:dropLines element.
+    $self->_write_drop_lines();
+
     # Write the c:marker element.
     $self->_write_marker_value();
 
@@ -114,7 +124,7 @@ Area - A class for writing Excel Area charts.
 
 =head1 SYNOPSIS
 
-To create a simple Excel file with a Area chart using Excel::Writer::XLSX:
+To create a simple Excel file with an Area chart using Excel::Writer::XLSX:
 
     #!/usr/bin/perl
 
@@ -232,7 +242,7 @@ Here is a complete example that demonstrates most of the available features when
 
 <p>This will produce a chart that looks like this:</p>
 
-<p><center><img src="http://homepage.eircom.net/~jmcnamara/perl/images/2007/area1.jpg" width="483" height="291" alt="Chart example." /></center></p>
+<p><center><img src="http://jmcnamara.github.com/excel-writer-xlsx/images/examples/area1.jpg" width="483" height="291" alt="Chart example." /></center></p>
 
 =end html
 
@@ -243,7 +253,7 @@ John McNamara jmcnamara@cpan.org
 
 =head1 COPYRIGHT
 
-Copyright MM-MMXII, John McNamara.
+Copyright MM-MMXIII, John McNamara.
 
 All Rights Reserved. This module is free software. It may be used, redistributed and/or modified under the same terms as Perl itself.
 

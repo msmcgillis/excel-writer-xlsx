@@ -4,6 +4,120 @@ Revision history for Perl module Excel::Writer::XLSX.
      - Removed/deprecated feature.
      ! Bug fix.
 
+0.67 May 6 2013
+
+   ! Fix for set_selection() with cell range.
+
+
+0.66 April 12 2013
+
+   ! Fix for issue with image scaling.
+
+
+0.65 December 31 2012
+
+   + Added options to format series Gap/Overlap for Bar/Column charts.
+
+
+0.64 December 22 2012
+
+    + Added the option to format individual points in a chart series.
+      This allows Pie chart segments to be formatted.
+
+
+0.63 December 19 2012
+
+    + Added Chart data tools such as:
+          Error Bars
+          Up-Down Bars
+          High-Low Lines
+          Drop Lines.
+      See the chart_data_tool.pl example.
+
+
+0.62 December 12 2012
+
+    + Added option for adding a data table to a Chart X-axis.
+      See output from chart_data_table.pl example.
+
+
+0.61 December 11 2012
+
+    + Allow a cell url string to be over written with a number or formula
+      using a second write() call to the same cell. The url remains intact.
+      Issue #48.
+
+    + Added set_default_row() method to set worksheet default values for
+      rows.
+
+    + Added Chart set_size() method to set the chart dimensions.
+
+
+0.60 December 5 2012
+
+    + Added Excel form buttons via the worksheet insert_button() method.
+      This allows the user to tie the button to an embedded macro imported
+      using add_vba_project(). 
+      The portal to the dungeon dimensions is now fully open.
+
+    ! Fix escaping of special character in URLs to write_url(). 
+      Issue #45.
+
+    ! Fix for 0 access/modification date on vbaProject.bin files extracted
+      using extract_vba. The date isn't generally set correctly in the
+      source xlsm file but this caused issues on Windows.
+
+
+0.59 November 26 2012
+
+    + Added macro support via VBA projects extracted from existing Excel
+      xlsm files. User defined functions can be called from worksheets
+      and macros can be called by the user but they cannot, currently,
+      be linked to form elements such as buttons.
+
+
+0.58 November 23 2012
+
+    + Added chart area and plot area formatting.
+
+
+0.57 November 21 2012
+
+    + Add major and minor axis chart gridline formatting.
+
+
+0.56 November 18 2012
+
+    ! Fix for issue where chart creation order had to be the same
+      as the insertion order or charts would be out of sync.
+      Frederic Claude Sievert and Hurricup. Issue #42.
+
+    ! Fixed issue where gridlines didn't work in Scatter and Stock
+      charts. Issue #41.
+
+    ! Fixed default XML encoding to avoid/solve various issues with XML
+      encoding created by the XML changes in version 0.51. Issue #43.
+
+
+0.55 November 10 2012
+
+    + Added Sparklines.
+
+    ! Fix for issue with "begins with" and "ends with" Conditional
+      Formatting. Issue #40.
+
+
+0.54 November 5 2012
+
+    + Added font manipulation to Charts.
+
+    + Added number formats to Chart axes.
+
+    + Added Radar Charts.
+
+    ! Fix for XML encoding in write_url() internal/external 
+      links. Issue #37.
+
 
 0.53 October 10 2012
 

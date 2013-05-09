@@ -7,7 +7,7 @@ package Excel::Writer::XLSX::Workbook;
 #
 # Used in conjunction with Excel::Writer::XLSX
 #
-# Copyright 2000-2012, John McNamara, jmcnamara@cpan.org
+# Copyright 2000-2013, John McNamara, jmcnamara@cpan.org
 #
 # Documentation after __END__
 #
@@ -33,7 +33,7 @@ use Excel::Writer::XLSX::Package::XMLwriter;
 use Excel::Writer::XLSX::Utility qw(xl_cell_to_rowcol xl_rowcol_to_cell);
 
 our @ISA     = qw(Excel::Writer::XLSX::Package::XMLwriter);
-our $VERSION = '0.53';
+our $VERSION = '0.67';
 
 
 ###############################################################################
@@ -84,6 +84,7 @@ sub new {
     $self->{_custom_colors}      = [];
     $self->{_doc_properties}     = {};
     $self->{_localtime}          = [ localtime() ];
+    $self->{_num_vml_files}      = 0;
     $self->{_num_comment_files}  = 0;
     $self->{_optimization}       = 0;
     $self->{_x_window}           = 240;
@@ -380,10 +381,6 @@ sub add_chart {
 
 
     my $chart = Excel::Writer::XLSX::Chart->factory( $type, $arg{subtype} );
-
-    # Get an incremental id to use for axes ids.
-    my $chart_index = scalar @{ $self->{_charts} };
-    $chart->{_id} = $chart_index;
 
     # If the chart isn't embedded let the workbook control it.
     if ( !$embedded ) {
@@ -795,6 +792,27 @@ sub set_properties {
 
 ###############################################################################
 #
+# add_vba_project()
+#
+# Add a vbaProject binary to the XLSX file.
+#
+sub add_vba_project {
+
+    my $self = shift;
+    my $vba_project = shift;
+
+    croak "No vbaProject.bin specified in add_vba_project()"
+      if not $vba_project;
+
+    croak "Couldn't locate $vba_project in add_vba_project(): $!"
+      unless -e $vba_project;
+
+    $self->{_vba_project} = $vba_project;
+}
+
+
+###############################################################################
+#
 # _store_workbook()
 #
 # Assemble worksheets into a workbook.
@@ -824,8 +842,8 @@ sub _store_workbook {
     # Convert the SST strings data structure.
     $self->_prepare_sst_string_data();
 
-    # Prepare the worksheet cell comments.
-    $self->_prepare_comments();
+    # Prepare the worksheet VML elements such as comments and buttons.
+    $self->_prepare_vml_objects();
 
     # Set the defined names for the worksheets such as Print Titles.
     $self->_prepare_defined_names();
@@ -1424,8 +1442,6 @@ sub _prepare_drawings {
         my $shape_count = scalar @{ $sheet->{_shapes} };
         next unless ( $chart_count + $image_count + $shape_count );
 
-        $sheet->_sort_charts();
-
         $drawing_id++;
 
         for my $index ( 0 .. $chart_count - 1 ) {
@@ -1454,28 +1470,42 @@ sub _prepare_drawings {
         push @{ $self->{_drawings} }, $drawing;
     }
 
+    # Sort the workbook charts references into the order that the were
+    # written from the worksheets above.
+    my @chart_data = @{ $self->{_charts} };
+
+    @chart_data = sort { $a->{_id} <=> $b->{_id} } @chart_data;
+
+    $self->{_charts} = \@chart_data;
+
+
     $self->{_drawing_count} = $drawing_id;
 }
 
 
 ###############################################################################
 #
-# _prepare_comments()
+# _prepare_vml_objects()
 #
-# Iterate through the worksheets and set up the comment data.
+# Iterate through the worksheets and set up the VML objects.
 #
-sub _prepare_comments {
+sub _prepare_vml_objects {
 
-    my $self         = shift;
-    my $comment_id   = 0;
-    my $vml_data_id  = 1;
-    my $vml_shape_id = 1024;
+    my $self          = shift;
+    my $comment_id    = 0;
+    my $vml_data_id   = 1;
+    my $vml_shape_id  = 1024;
+    my $vml_files     = 0;
+    my $comment_files = 0;
 
     for my $sheet ( @{ $self->{_worksheets} } ) {
 
-        next unless $sheet->{_has_comments};
+        next unless $sheet->{_has_vml};
+        $vml_files++;
+        $comment_files++ if $sheet->{_has_comments};
 
-        my $count = $sheet->_prepare_comments( $vml_data_id, $vml_shape_id,
+
+        my $count = $sheet->_prepare_vml_objects( $vml_data_id, $vml_shape_id,
             ++$comment_id );
 
         # Each VML file should start with a shape id incremented by 1024.
@@ -1483,10 +1513,11 @@ sub _prepare_comments {
         $vml_shape_id += 1024 * int( ( 1024 + $count ) / 1024 );
     }
 
-    $self->{_num_comment_files} = $comment_id;
+    $self->{_num_vml_files}     = $vml_files;
+    $self->{_num_comment_files} = $comment_files;
 
     # Add a font format for cell comments.
-    if ( $comment_id > 0 ) {
+    if ( $comment_files > 0 ) {
         my $format = Excel::Writer::XLSX::Format->new(
             \$self->{_xf_format_indices},
             \$self->{_dxf_format_indices},
@@ -2002,6 +2033,10 @@ sub _write_file_version {
         'rupBuild'     => $rup_build,
     );
 
+    if ( $self->{_vba_project} ) {
+        push @attributes, codeName => '{37E998C4-C9E5-D4B9-71C8-EB1FF731991C}';
+    }
+
     $self->xml_empty_tag( 'fileVersion', @attributes );
 }
 
@@ -2019,9 +2054,11 @@ sub _write_workbook_pr {
     my $show_ink_annotation    = 0;
     my $auto_compress_pictures = 0;
     my $default_theme_version  = 124226;
+    my $codename               = $self->{_vba_codename};
     my @attributes;
 
-    push @attributes, ( 'date1904' => 1 ) if $date_1904;
+    push @attributes, ( 'codeName' => $codename ) if $codename;
+    push @attributes, ( 'date1904' => 1 )         if $date_1904;
     push @attributes, ( 'defaultThemeVersion' => $default_theme_version );
 
     $self->xml_empty_tag( 'workbookPr', @attributes );
@@ -2071,7 +2108,7 @@ sub _write_workbook_view {
     push @attributes, ( tabRatio => $tab_ratio ) if $tab_ratio != 500;
 
     # Store the firstSheet attribute when it isn't the default.
-    push @attributes, ( firstSheet => $first_sheet ) if $first_sheet > 0;
+    push @attributes, ( firstSheet => $first_sheet +1 ) if $first_sheet > 0;
 
     # Store the activeTab attribute when it isn't the first sheet.
     push @attributes, ( activeTab => $active_tab ) if $active_tab > 0;
@@ -2124,7 +2161,7 @@ sub _write_sheet {
     push @attributes, ( 'r:id' => $r_id );
 
 
-    $self->xml_encoded_empty_tag( 'sheet', @attributes );
+    $self->xml_empty_tag( 'sheet', @attributes );
 }
 
 
@@ -2272,6 +2309,6 @@ John McNamara jmcnamara@cpan.org
 
 =head1 COPYRIGHT
 
-(c) MM-MMXII, John McNamara.
+(c) MM-MMXIII, John McNamara.
 
 All Rights Reserved. This module is free software. It may be used, redistributed and/or modified under the same terms as Perl itself.

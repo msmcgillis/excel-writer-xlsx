@@ -2,7 +2,7 @@
 #
 # Tests for Excel::Writer::XLSX::Chart methods.
 #
-# reverse('(c)'), March 2011, John McNamara, jmcnamara@cpan.org
+# reverse ('(c)'), March 2011, John McNamara, jmcnamara@cpan.org
 #
 
 use lib 't/lib';
@@ -41,6 +41,8 @@ $expected = {
     _fill          => { _defined => 0 },
     _marker        => undef,
     _trendline     => undef,
+    _error_bars    => { _x_error_bars => undef, _y_error_bars => undef },
+    _points        => undef,
     _labels        => undef,
     _invert_if_neg => undef,
     _x2_axis       => undef,
@@ -74,6 +76,8 @@ $expected = [
         _fill          => { _defined => 0 },
         _marker        => undef,
         _trendline     => undef,
+        _error_bars    => { _x_error_bars => undef, _y_error_bars => undef },
+        _points        => undef,
         _labels        => undef,
         _invert_if_neg => undef,
         _x2_axis       => undef,
@@ -112,6 +116,8 @@ $expected = [
         _fill          => { _defined => 0 },
         _marker        => undef,
         _trendline     => undef,
+        _error_bars    => { _x_error_bars => undef, _y_error_bars => undef },
+        _points        => undef,
         _labels        => undef,
         _invert_if_neg => undef,
         _x2_axis       => undef,
@@ -145,6 +151,8 @@ $expected = {
     _fill          => { _defined => 0 },
     _marker        => undef,
     _trendline     => undef,
+    _error_bars    => { _x_error_bars => undef, _y_error_bars => undef },
+    _points        => undef,
     _labels        => undef,
     _invert_if_neg => undef,
     _x2_axis       => undef,
@@ -181,6 +189,8 @@ $expected = {
     _fill          => { _defined => 0 },
     _marker        => undef,
     _trendline     => undef,
+    _error_bars    => { _x_error_bars => undef, _y_error_bars => undef },
+    _points        => undef,
     _labels        => undef,
     _invert_if_neg => undef,
     _x2_axis       => 1,

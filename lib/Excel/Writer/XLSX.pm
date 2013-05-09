@@ -4,7 +4,7 @@ package Excel::Writer::XLSX;
 #
 # Excel::Writer::XLSX - Create a new file in the Excel 2007+ XLSX format.
 #
-# Copyright 2000-2012, John McNamara, jmcnamara@cpan.org
+# Copyright 2000-2013, John McNamara, jmcnamara@cpan.org
 #
 # Documentation after __END__
 #
@@ -18,7 +18,7 @@ use strict;
 use Excel::Writer::XLSX::Workbook;
 
 our @ISA     = qw(Excel::Writer::XLSX::Workbook Exporter);
-our $VERSION = '0.53';
+our $VERSION = '0.67';
 
 
 ###############################################################################
@@ -50,7 +50,7 @@ Excel::Writer::XLSX - Create a new file in the Excel 2007+ XLSX format.
 
 =head1 VERSION
 
-This document refers to version 0.53 of Excel::Writer::XLSX, released October 10, 2012.
+This document refers to version 0.67 of Excel::Writer::XLSX, released May 6, 2013.
 
 
 
@@ -143,6 +143,7 @@ The Excel::Writer::XLSX module provides an object oriented interface to a new Ex
     add_format()
     add_chart()
     add_shape()
+    add_vba_project()
     close()
     set_properties()
     define_name()
@@ -196,7 +197,7 @@ In C<mod_perl> programs where you will have to do something like the following:
 
     # mod_perl 1
     ...
-    tie *XLS, 'Apache';
+    tie *XLSX, 'Apache';
     binmode( XLSX );
     my $workbook = Excel::Writer::XLSX->new( \*XLSX );
     ...
@@ -332,6 +333,8 @@ Specifies that the Chart object will be inserted in a worksheet via the C<insert
 
 See Excel::Writer::XLSX::Chart for details on how to configure the chart object once it is created. See also the C<chart_*.pl> programs in the examples directory of the distro.
 
+
+
 =head2 add_shape( %properties )
 
 The C<add_shape()> method can be used to create new shapes that may be inserted into a worksheet.
@@ -353,6 +356,32 @@ You can either define the properties at creation time via a hash of property val
 See L<Excel::Writer::XLSX::Shape> for details on how to configure the shape object once it is created.
 
 See also the C<shape*.pl> programs in the examples directory of the distro.
+
+
+
+=head2 add_vba_project( 'vbaProject.bin' )
+
+The C<add_vba_project()> method can be used to add macros or functions to an Excel::Writer::XLSX file using a binary VBA project file that has been extracted from an existing Excel C<xlsm> file.
+
+    my $workbook  = Excel::Writer::XLSX->new( 'file.xlsm' );
+
+    $workbook->add_vba_project( './vbaProject.bin' );
+
+The supplied C<extract_vba> utility can be used to extract the required C<vbaProject.bin> file from an existing Excel file:
+
+    $ extract_vba file.xlsm
+    Extracted 'vbaProject.bin' successfully
+
+Macros can be tied to buttons using the worksheet C<insert_button()> method (see the L</WORKSHEET METHODS> section for details):
+
+    $worksheet->insert_button( 'C2', { macro => 'my_macro' } );
+
+Note, Excel uses the file extension C<xlsm> instead of C<xlsx> for files that contain macros. It is advisable to follow the same convention.
+
+See also the C<macros.pl> example file.
+
+
+
 
 =head2 close()
 
@@ -597,8 +626,10 @@ The following methods are available through a new worksheet:
     insert_image()
     insert_chart()
     insert_shape()
+    insert_button()
     data_validation()
     conditional_formatting()
+    add_sparkline()
     add_table()
     get_name()
     activate()
@@ -608,6 +639,7 @@ The following methods are available through a new worksheet:
     protect()
     set_selection()
     set_row()
+    set_default_row()
     set_column()
     outline_settings()
     freeze_panes()
@@ -680,7 +712,7 @@ Excel makes a distinction between data types such as strings, numbers, blanks, f
 
 The general rule is that if the data looks like a I<something> then a I<something> is written. Here are some examples in both row-column and A1 notation:
 
-                                                       # Same as:
+                                                        # Same as:
     $worksheet->write( 0, 0, 'Hello'                 ); # write_string()
     $worksheet->write( 1, 0, 'One'                   ); # write_string()
     $worksheet->write( 2, 0,  2                      ); # write_number()
@@ -699,9 +731,9 @@ The general rule is that if the data looks like a I<something> then a I<somethin
     $worksheet->write( 'A15', [\@array]              ); # write_col()
 
     # And if the keep_leading_zeros property is set:
-    $worksheet->write( 'A16', 2                      ); # write_number()
-    $worksheet->write( 'A17', 02                     ); # write_string()
-    $worksheet->write( 'A18', 00002                  ); # write_string()
+    $worksheet->write( 'A16', '2'                    ); # write_number()
+    $worksheet->write( 'A17', '02'                   ); # write_string()
+    $worksheet->write( 'A18', '00002'                ); # write_string()
 
     # Write an array formula. Not available in Spreadsheet::WriteExcel.
     $worksheet->write( 'A19', '{=SUM(A1:B1*A2:B2)}'  ); # write_formula()
@@ -840,7 +872,7 @@ String fragments that don't have a format are given a default format. So for exa
     $worksheet->write_rich_string( 'A1',
         $default, 'Some ', $bold, 'bold', $default, ' text' );
 
-As with Excel, only the font properties of the format such as font name, style, size, underline, color and effects are applied to the string fragments. Other features such as border, background and alignment must be applied to the cell.
+As with Excel, only the font properties of the format such as font name, style, size, underline, color and effects are applied to the string fragments. Other features such as border, background, text wrap and alignment must be applied to the cell.
 
 The C<write_rich_string()> method allows you to do this by using the last argument as a cell format (if it is a format object). The following example centers a rich string in the cell:
 
@@ -930,7 +962,7 @@ It should be noted that if the user edits the data in examples C<A3> and C<A4> t
 
 The C<keep_leading_zeros()> property is off by default. The C<keep_leading_zeros()> method takes 0 or 1 as an argument. It defaults to 1 if an argument isn't specified:
 
-    $worksheet->keep_leading_zeros(   )     # Set on
+    $worksheet->keep_leading_zeros();       # Set on
     $worksheet->keep_leading_zeros( 1 );    # Set on
     $worksheet->keep_leading_zeros( 0 );    # Set off
 
@@ -1129,7 +1161,7 @@ See also the date_time.pl program in the C<examples> directory of the distro.
 
 Write a hyperlink to a URL in the cell specified by C<$row> and C<$column>. The hyperlink is comprised of two elements: the visible label and the invisible link. The visible label is the same as the link unless an alternative label is specified. The C<$label> parameter is optional. The label is written using the C<write()> method. Therefore it is possible to write strings, numbers or formulas as labels.
 
-The C<$format> parameter is also optional, however, without a format the link won't look like a format.
+The C<$format> parameter is also optional, however, without a format the link won't look like a link.
 
 The suggested format is:
 
@@ -1139,10 +1171,20 @@ B<Note>, this behaviour is different from Spreadsheet::WriteExcel which provides
 
 There are four web style URI's supported: C<http://>, C<https://>, C<ftp://> and C<mailto:>:
 
-    $worksheet->write_url( 0, 0, 'ftp://www.perl.org/', $format );
-    $worksheet->write_url( 1, 0, 'http://www.perl.com/', $format, 'Perl' );
+    $worksheet->write_url( 0, 0, 'ftp://www.perl.org/',       $format );
     $worksheet->write_url( 'A3', 'http://www.perl.com/',      $format );
     $worksheet->write_url( 'A4', 'mailto:jmcnamara@cpan.org', $format );
+
+You can display an alternative string using the C<$label> parameter:
+
+    $worksheet->write_url( 1, 0, 'http://www.perl.com/', $format, 'Perl' );
+
+If you wish to have some other cell data such as a number or a formula you can overwrite the cell using another call to C<write_*()>:
+
+    $worksheet->write_url( 'A1', 'http://www.perl.com/' );
+
+    # Overwrite the URL string with a formula. The cell is still a link.
+    $worksheet->write_formula( 'A1', '=1+1', $format );
 
 There are two local URIs supported: C<internal:> and C<external:>. These are used for hyperlinks to internal worksheet references or external workbook and worksheet references:
 
@@ -1177,7 +1219,7 @@ Finally, you can avoid most of these quoting problems by using forward slashes. 
     $worksheet->write_url( 'A14', "external:c:/temp/foo.xlsx" );
     $worksheet->write_url( 'A15', 'external://NETWORK/share/foo.xlsx' );
 
-Note, Excel doesn't allow white space in hyperlink urls. Urls with whitespace will generate a warning and be ignored.
+Note: Excel::Writer::XLSX will escape the following characters in URLs as required by Excel: C<< \s " < > \ [  ] ` ^ { } >> unless the URL already contains C<%xx> style escapes. In which case it is assumed that the URL was escaped correctly by the user and will by passed directly to Excel.
 
 See also, the note about L</Cell notation>.
 
@@ -1207,7 +1249,7 @@ If required, it is also possible to specify the calculated value of the formula.
 
     $worksheet->write( 'A1', '=2+2', $format, 4 );
 
-However, this probably isn't something that will ever need to do. If you do use this feature then do so with care.
+However, this probably isn't something that you will ever need to do. If you do use this feature then do so with care.
 
 
 
@@ -1519,11 +1561,11 @@ See the C<write_handler 1-4> programs in the C<examples> directory for further e
 
 
 
-=head2 insert_image( $row, $col, $filename, $x, $y, $scale_x, $scale_y )
+=head2 insert_image( $row, $col, $filename, $x, $y, $x_scale, $y_scale )
 
-Partially supported. Currently only works for 96 dpi images. This will be fixed in an upcoming release.
+Partially supported. Currently only works for 96 dpi images.
 
-This method can be used to insert a image into a worksheet. The image can be in PNG, JPEG or BMP format. The C<$x>, C<$y>, C<$scale_x> and C<$scale_y> parameters are optional.
+This method can be used to insert a image into a worksheet. The image can be in PNG, JPEG or BMP format. The C<$x>, C<$y>, C<$x_scale> and C<$y_scale> parameters are optional.
 
     $worksheet1->insert_image( 'A1', 'perl.bmp' );
     $worksheet2->insert_image( 'A1', '../images/perl.bmp' );
@@ -1535,12 +1577,10 @@ The parameters C<$x> and C<$y> can be used to specify an offset from the top lef
 
 The offsets can be greater than the width or height of the underlying cell. This can be occasionally useful if you wish to align two or more images relative to the same cell.
 
-The parameters C<$scale_x> and C<$scale_y> can be used to scale the inserted image horizontally and vertically:
+The parameters C<$x_scale> and C<$y_scale> can be used to scale the inserted image horizontally and vertically:
 
     # Scale the inserted image: width x 2.0, height x 0.8
     $worksheet->insert_image( 'A1', 'perl.bmp', 0, 0, 2, 0.8 );
-
-See also the C<images.pl> program in the C<examples> directory of the distro.
 
 Note: you must call C<set_row()> or C<set_column()> before C<insert_image()> if you wish to change the default dimensions of any of the rows or columns that the image occupies. The height of a row can also change if you use a font that is larger than the default. This in turn will affect the scaling of your image. To avoid this you should explicitly set the height of the row using C<set_row()> if it contains a font size that will change the row height.
 
@@ -1549,7 +1589,7 @@ BMP images must be 24 bit, true colour, bitmaps. In general it is best to avoid 
 
 
 
-=head2 insert_chart( $row, $col, $chart, $x, $y, $scale_x, $scale_y )
+=head2 insert_chart( $row, $col, $chart, $x, $y, $x_scale, $y_scale )
 
 This method can be used to insert a Chart object into a worksheet. The Chart must be created by the C<add_chart()> Workbook method and it must have the C<embedded> option set.
 
@@ -1563,18 +1603,18 @@ This method can be used to insert a Chart object into a worksheet. The Chart mus
 
 See C<add_chart()> for details on how to create the Chart object and L<Excel::Writer::XLSX::Chart> for details on how to configure it. See also the C<chart_*.pl> programs in the examples directory of the distro.
 
-The C<$x>, C<$y>, C<$scale_x> and C<$scale_y> parameters are optional.
+The C<$x>, C<$y>, C<$x_scale> and C<$y_scale> parameters are optional.
 
 The parameters C<$x> and C<$y> can be used to specify an offset from the top left hand corner of the cell specified by C<$row> and C<$col>. The offset values are in pixels.
 
     $worksheet1->insert_chart( 'E2', $chart, 3, 3 );
 
-The parameters C<$scale_x> and C<$scale_y> can be used to scale the inserted image horizontally and vertically:
+The parameters C<$x_scale> and C<$y_scale> can be used to scale the inserted chart horizontally and vertically:
 
     # Scale the width by 120% and the height by 150%
     $worksheet->insert_chart( 'E2', $chart, 0, 0, 1.2, 1.5 );
 
-=head2 insert_shape( $row, $col, $shape, $x, $y, $scale_x, $scale_y )
+=head2 insert_shape( $row, $col, $shape, $x, $y, $x_scale, $y_scale )
 
 This method can be used to insert a Shape object into a worksheet. The Shape must be created by the C<add_shape()> Workbook method.
 
@@ -1589,18 +1629,108 @@ This method can be used to insert a Shape object into a worksheet. The Shape mus
 
 See C<add_shape()> for details on how to create the Shape object and L<Excel::Writer::XLSX::Shape> for details on how to configure it.
 
-The C<$x>, C<$y>, C<$scale_x> and C<$scale_y> parameters are optional.
+The C<$x>, C<$y>, C<$x_scale> and C<$y_scale> parameters are optional.
 
 The parameters C<$x> and C<$y> can be used to specify an offset from the top left hand corner of the cell specified by C<$row> and C<$col>. The offset values are in pixels.
 
     $worksheet1->insert_shape( 'E2', $chart, 3, 3 );
 
-The parameters C<$scale_x> and C<$scale_y> can be used to scale the inserted shape horizontally and vertically:
+The parameters C<$x_scale> and C<$y_scale> can be used to scale the inserted shape horizontally and vertically:
 
     # Scale the width by 120% and the height by 150%
     $worksheet->insert_shape( 'E2', $shape, 0, 0, 1.2, 1.5 );
 
 See also the C<shape*.pl> programs in the examples directory of the distro.
+
+
+
+
+=head2 insert_button( $row, $col, { %properties })
+
+The C<insert_button()> method can be used to insert an Excel form button into a worksheet.
+
+This method is generally only useful when used in conjunction with the Workbook C<add_vba_project()> method to tie the button to a macro from an embedded VBA project:
+
+    my $workbook  = Excel::Writer::XLSX->new( 'file.xlsm' );
+    ...
+    $workbook->add_vba_project( './vbaProject.bin' );
+
+    $worksheet->insert_button( 'C2', { macro => 'my_macro' } );
+
+The properties of the button that can be set are:
+
+    macro
+    caption
+    width
+    height
+    x_scale
+    y_scale
+    x_offset
+    y_offset
+
+
+=over
+
+=item Option: macro
+
+This option is used to set the macro that the button will invoke when the user clicks on it. The macro should be included using the Workbook C<add_vba_project()> method shown above.
+
+    $worksheet->insert_button( 'C2', { macro => 'my_macro' } );
+
+The default macro is C<ButtonX_Click> where X is the button number.
+
+=item Option: caption
+
+This option is used to set the caption on the button. The default is C<Button X> where X is the button number.
+
+    $worksheet->insert_button( 'C2', { macro => 'my_macro', caption => 'Hello' } );
+
+=item Option: width
+
+This option is used to set the width of the button in pixels.
+
+    $worksheet->insert_button( 'C2', { macro => 'my_macro', width => 128 } );
+
+The default button width is 64 pixels which is the width of a default cell.
+
+=item Option: height
+
+This option is used to set the height of the button in pixels.
+
+    $worksheet->insert_button( 'C2', { macro => 'my_macro', height => 40 } );
+
+The default button height is 20 pixels which is the height of a default cell.
+
+=item Option: x_scale
+
+This option is used to set the width of the button as a factor of the default width.
+
+    $worksheet->insert_button( 'C2', { macro => 'my_macro', x_scale => 2.0 );
+
+=item Option: y_scale
+
+This option is used to set the height of the button as a factor of the default height.
+
+    $worksheet->insert_button( 'C2', { macro => 'my_macro', y_scale => 2.0 );
+
+
+=item Option: x_offset
+
+This option is used to change the x offset, in pixels, of a button within a cell:
+
+    $worksheet->insert_button( 'C2', { macro => 'my_macro', x_offset => 2 );
+
+=item Option: y_offset
+
+This option is used to change the y offset, in pixels, of a comment within a cell.
+
+=back
+
+
+Note: Button is the only Excel form element that is available in Excel::Writer::XLSX. Form elements represent a lot of work to implement and the underlying VML syntax isn't very much fun.
+
+
+
 
 =head2 data_validation()
 
@@ -1644,6 +1774,28 @@ The C<conditional_formatting()> method is used to add formatting to a cell or ra
 This method contains a lot of parameters and is described in detail in a separate section L<CONDITIONAL FORMATTING IN EXCEL>.
 
 See also the C<conditional_format.pl> program in the examples directory of the distro
+
+
+
+
+=head2 add_sparkline()
+
+The C<add_sparkline()> worksheet method is used to add sparklines to a cell or a range of cells.
+
+    $worksheet->add_sparkline(
+        {
+            location => 'F2',
+            range    => 'Sheet1!A2:E2',
+            type     => 'column',
+            style    => 12,
+        }
+    );
+
+This method contains a lot of parameters and is described in detail in a separate section L</SPARKLINES IN EXCEL>.
+
+See also the C<sparklines1.pl> and C<sparklines2.pl> example programs in the C<examples> directory of the distro.
+
+B<Note:> Sparklines are a feature of Excel 2010+ only. You can write them to an XLSX file that can be read by Excel 2007 but they won't be displayed.
 
 
 
@@ -1746,7 +1898,7 @@ The C<protect()> method is used to protect a worksheet from modification:
 
 The C<protect()> method also has the effect of enabling a cell's C<locked> and C<hidden> properties if they have been set. A I<locked> cell cannot be edited and this property is on by default for all cells. A I<hidden> cell will display the results of a formula but not the formula itself.
 
-See the C<protection.pl> program in the examples directory of the distro for an illustrative example and the C<set_locked> and C<set_hidden> format methods in L<C/ELL FORMATTING>.
+See the C<protection.pl> program in the examples directory of the distro for an illustrative example and the C<set_locked> and C<set_hidden> format methods in L</CELL FORMATTING>.
 
 You can optionally add a password to the worksheet protection:
 
@@ -1756,7 +1908,7 @@ Passing the empty string C<''> is the same as turning on protection without a pa
 
 Note, the worksheet level password in Excel provides very weak protection. It does not encrypt your data and is very easy to deactivate. Full workbook encryption is not supported by C<Excel::Writer::XLSX> since it requires a completely different file format and would take several man months to implement.
 
-You can specify which worksheet elements that you which to protect by passing a hash_ref with any or all of the following keys:
+You can specify which worksheet elements you wish to protect by passing a hash_ref with any or all of the following keys:
 
     # Default shown.
     %options = (
@@ -1912,6 +2064,21 @@ Excel allows up to 7 outline levels. Therefore the C<$level> parameter should be
 
 
 
+=head2 set_default_row( $height, $hide_unused_rows )
+
+The C<set_default_row()> method is used to set the limited number of default row properties allowed by Excel. These are the default height and the option to hide unused rows.
+
+    $worksheet->set_default_row( 24 );  # Set the default row height to 24.
+
+The option to hide unused rows is used by Excel as an optimisation so that the user can hide a large number of rows without generating a very large file with an entry for each hidden row.
+
+    $worksheet->set_default_row( undef, 1 );
+
+See the C<hide_row_col.pl> example program.
+
+
+
+
 =head2 outline_settings( $visible, $symbols_below, $symbols_right, $auto_style )
 
 The C<outline_settings()> method is used to control the appearance of outlines in Excel. Outlines are described in L</OUTLINES AND GROUPING IN EXCEL>.
@@ -1922,7 +2089,7 @@ The C<$visible> parameter is used to control whether or not outlines are visible
 
 The C<$symbols_below> parameter is used to control whether the row outline symbol will appear above or below the outline level bar. The default setting is 1 for symbols to appear below the outline level bar.
 
-The C<symbols_right> parameter is used to control whether the column outline symbol will appear to the left or the right of the outline level bar. The default setting is 1 for symbols to appear to the right of the outline level bar.
+The C<$symbols_right> parameter is used to control whether the column outline symbol will appear to the left or the right of the outline level bar. The default setting is 1 for symbols to appear to the right of the outline level bar.
 
 The C<$auto_style> parameter is used to control whether the automatic outline generator in Excel uses automatic styles when creating an outline. This has no effect on a file generated by C<Excel::Writer::XLSX> but it does have an effect on how the worksheet behaves after it is created. The default setting is 0 for "Automatic Styles" to be turned off.
 
@@ -1987,7 +2154,7 @@ See also the C<freeze_panes()> method and the C<panes.pl> program in the C<examp
 
 =head2 merge_range( $first_row, $first_col, $last_row, $last_col, $token, $format )
 
-The C<merge_range()> method allows you merge cells that contain other types of alignment in addition to the merging:
+The C<merge_range()> method allows you to merge cells that contain other types of alignment in addition to the merging:
 
     my $format = $workbook->add_format(
         border => 6,
@@ -2051,7 +2218,7 @@ Note, C<set_zoom()> does not affect the scale of the printed page. For that you 
 
 =head2 right_to_left()
 
-The C<right_to_left()> method is used to change the default direction of the worksheet from left-to-right, with the A1 cell in the top left, to right-to-left, with the he A1 cell in the top right.
+The C<right_to_left()> method is used to change the default direction of the worksheet from left-to-right, with the A1 cell in the top left, to right-to-left, with the A1 cell in the top right.
 
     $worksheet->right_to_left();
 
@@ -2073,7 +2240,7 @@ In Excel this option is found under Tools->Options->View.
 
 =head2 set_tab_color()
 
-The C<set_tab_color()> method is used to change the colour of the worksheet tab. This feature is only available in Excel 2002 and later. You can use one of the standard colour names provided by the Format object or a colour index. See L</COLOURS IN EXCEL> and the C<set_custom_color()> method.
+The C<set_tab_color()> method is used to change the colour of the worksheet tab. You can use one of the standard colour names provided by the Format object or a colour index. See L</COLOURS IN EXCEL> and the C<set_custom_color()> method.
 
     $worksheet1->set_tab_color( 'red' );
     $worksheet2->set_tab_color( 0x0C );
@@ -2085,7 +2252,7 @@ See the C<tab_colors.pl> program in the examples directory of the distro.
 
 =head2 autofilter( $first_row, $first_col, $last_row, $last_col )
 
-This method allows an autofilter to be added to a worksheet. An autofilter is a way of adding drop down lists to the headers of a 2D range of worksheet data. This is turn allow users to filter the data based on simple criteria so that some data is shown and some is hidden.
+This method allows an autofilter to be added to a worksheet. An autofilter is a way of adding drop down lists to the headers of a 2D range of worksheet data. This allows users to filter the data based on simple criteria so that some data is shown and some is hidden.
 
 To add an autofilter to a worksheet:
 
@@ -2192,7 +2359,6 @@ One or more criteria can be selected:
     $worksheet->filter_column_list( 1, 100, 110, 120, 130 );
 
 B<NOTE:> It isn't sufficient to just specify the filter condition. You must also hide any rows that don't match the filter condition. Rows are hidden using the C<set_row()> C<visible> parameter. C<Excel::Writer::XLSX> cannot do this automatically since it isn't part of the file format. See the C<autofilter.pl> program in the examples directory of the distro for an example.
-e conditions for the filter are specified using simple expressions:
 
 
 
@@ -2502,7 +2668,7 @@ See, also the C<headers.pl> program in the C<examples> directory of the distribu
 
 
 
-=head2 set_footer()
+=head2 set_footer( $string, $margin )
 
 The syntax of the C<set_footer()> method is the same as C<set_header()>,  see above.
 
@@ -2797,7 +2963,7 @@ You can also store the properties in one or more named hashes and pass them to t
     my $format2 = $workbook->add_format( %font, %shading );  # Font and shading
 
 
-The provision of two ways of setting properties might lead you to wonder which is the best way. The method mechanism may be better is you prefer setting properties via method calls (which the author did when the code was first written) otherwise passing properties to the constructor has proved to be a little more flexible and self documenting in practice. An additional advantage of working with property hashes is that it allows you to share formatting between workbook objects as shown in the example above.
+The provision of two ways of setting properties might lead you to wonder which is the best way. The method mechanism may be better if you prefer setting properties via method calls (which the author did when the code was first written) otherwise passing properties to the constructor has proved to be a little more flexible and self documenting in practice. An additional advantage of working with property hashes is that it allows you to share formatting between workbook objects as shown in the example above.
 
 The Perl/Tk style of adding properties is also supported:
 
@@ -3169,7 +3335,7 @@ For examples of these formatting codes see the 'Numerical formats' worksheet cre
 
 Note 1. Numeric formats 23 to 36 are not documented by Microsoft and may differ in international versions.
 
-Note 2. In Excel 5 the dollar sign appears as a dollar sign. In Excel 97-2000 it appears as the defined local currency symbol.
+Note 2. The dollar sign appears as the defined local currency symbol.
 
 
 
@@ -3968,7 +4134,7 @@ The C<validate> parameter is used to set the type of data that you wish to valid
 
 Excel requires that range references are only to cells on the same worksheet.
 
-=item * B<date> restricts the cell to date values. Dates in Excel are expressed as integer values but you can also pass an ISO860 style string as used in C<write_date_time()>. See also L</DATES AND TIME IN EXCEL> for more information about working with Excel's dates.
+=item * B<date> restricts the cell to date values. Dates in Excel are expressed as integer values but you can also pass an ISO8601 style string as used in C<write_date_time()>. See also L</DATES AND TIME IN EXCEL> for more information about working with Excel's dates.
 
     validate => 'date',
     criteria => '>',
@@ -3976,7 +4142,7 @@ Excel requires that range references are only to cells on the same worksheet.
     # Or like this:
     value    => '2008-07-24T',
 
-=item * B<time> restricts the cell to time values. Times in Excel are expressed as decimal values but you can also pass an ISO860 style string as used in C<write_date_time()>. See also L</DATES AND TIME IN EXCEL> for more information about working with Excel's times.
+=item * B<time> restricts the cell to time values. Times in Excel are expressed as decimal values but you can also pass an ISO8601 style string as used in C<write_date_time()>. See also L</DATES AND TIME IN EXCEL> for more information about working with Excel's times.
 
     validate => 'time',
     criteria => '>',
@@ -4275,7 +4441,7 @@ For example the following criteria is used to highlight cells >= 50 in red in th
 
 =head2 conditional_formatting( $row, $col, { parameter => 'value', ... } )
 
-The C<conditional_formatting()> method is used to apply formatting  based on used defined criteria to an Excel::Writer::XLSX file.
+The C<conditional_formatting()> method is used to apply formatting  based on user defined criteria to an Excel::Writer::XLSX file.
 
 It can be applied to a single cell or a range of cells. You can pass 3 parameters such as C<($row, $col, {...})> or 5 parameters such as C<($first_row, $first_col, $last_row, $last_col, {...})>. You can also use C<A1> style notation. For example:
 
@@ -4302,7 +4468,7 @@ The last parameter in C<conditional_formatting()> must be a hash ref containing 
     minimum
     maximum
 
-Other, less used parameters are:
+Other, less commonly used parameters are:
 
     min_type
     mid_type
@@ -4373,7 +4539,7 @@ All conditional formatting types have a C<format> parameter, see below. Other ty
 
 =head2 type => 'cell'
 
-This is the most common conditional formatting type. It is used when a format is applied to a cell based on a simple criteria. For example:
+This is the most common conditional formatting type. It is used when a format is applied to a cell based on a simple criterion. For example:
 
     $worksheet->conditional_formatting( 'A1',
         {
@@ -4434,7 +4600,7 @@ The C<value> property can also be an cell reference.
 
 =head2 format
 
-The C<format> parameter is used to specify the format that will be applied to the cell when the conditional formatting criteria is met. The format is created using the C<add_format()> method in the same way as cell formats:
+The C<format> parameter is used to specify the format that will be applied to the cell when the conditional formatting criterion is met. The format is created using the C<add_format()> method in the same way as cell formats:
 
     $format = $workbook->add_format( bold => 1, italic => 1 );
 
@@ -4490,7 +4656,7 @@ The C<maximum> parameter is used to set the upper limiting value when the C<crit
 
 =head2 type => 'date'
 
-The C<date> type is the same as C<cell> type and uses the same criteria and values. However it allows the C<value>, C<minimum> and C<maximum> properties to be specified in the ISO8601 C<yyyy-mm-ddThh:mm:ss.sss> date format which is detailed in the C<write_date_time()> method.
+The C<date> type is the same as the C<cell> type and uses the same criteria and values. However it allows the C<value>, C<minimum> and C<maximum> properties to be specified in the ISO8601 C<yyyy-mm-ddThh:mm:ss.sss> date format which is detailed in the C<write_date_time()> method.
 
     $worksheet->conditional_formatting( 'A1:A4',
         {
@@ -4722,13 +4888,13 @@ At the moment only the default colors and properties can be used. These will be 
 
 The C<formula> type is used to specify a conditional format based on a user defined formula:
 
-$worksheet->conditional_formatting( 'A1:A4',
-    {
-        type     => 'formula',
-        criteria => '=$A$1 > 5',
-        format   => $format,
-    }
-);
+    $worksheet->conditional_formatting( 'A1:A4',
+        {
+            type     => 'formula',
+            criteria => '=$A$1 > 5',
+            format   => $format,
+        }
+    );
 
 The formula is specified in the C<criteria>.
 
@@ -4777,12 +4943,12 @@ The C<min_color> and C<max_color> properties are available when the conditional 
         }
     );
 
-The color can be specifies as an Excel::Write::Excel color index or, more usefully, as a Html style RGB hex number, as shown above.
+The color can be specifies as an Excel::Writer::XLSX color index or, more usefully, as a HTML style RGB hex number, as shown above.
 
 
 =head2 Conditional Formatting Examples
 
-Example 1. Highlight cells greater than or equal to an integer value.
+Example 1. Highlight cells greater than an integer value.
 
     $worksheet->conditional_formatting( 'A1:F10',
         {
@@ -4793,7 +4959,7 @@ Example 1. Highlight cells greater than or equal to an integer value.
         }
     );
 
-Example 2. Highlight cells greater than or equal to a value in a reference cell.
+Example 2. Highlight cells greater than a value in a reference cell.
 
     $worksheet->conditional_formatting( 'A1:F10',
         {
@@ -4885,6 +5051,299 @@ Example 10. Highlight blank cells.
 
 
 See also the C<conditional_format.pl> example program in C<EXAMPLES>.
+
+
+
+
+=head1 SPARKLINES IN EXCEL
+
+Sparklines are a feature of Excel 2010+ which allows you to add small charts to worksheet cells. These are useful for showing visual trends in data in a compact format.
+
+In Excel::Writer::XLSX Sparklines can be added to cells using the C<add_sparkline()> worksheet method:
+
+    $worksheet->add_sparkline(
+        {
+            location => 'F2',
+            range    => 'Sheet1!A2:E2',
+            type     => 'column',
+            style    => 12,
+        }
+    );
+
+=begin html
+
+<p><center><img src="http://jmcnamara.github.com/excel-writer-xlsx/images/examples/sparklines1.jpg" alt="Sparklines example."/></center></p>
+
+=end html
+
+B<Note:> Sparklines are a feature of Excel 2010+ only. You can write them to an XLSX file that can be read by Excel 2007 but they won't be displayed.
+
+
+=head2 add_sparkline( { parameter => 'value', ... } )
+
+The C<add_sparkline()> worksheet method is used to add sparklines to a cell or a range of cells.
+
+The parameters to C<add_sparkline()> must be passed in a hash ref. The main sparkline parameters are:
+
+    location        (required)
+    range           (required)
+    type
+    style
+
+    markers
+    negative_points
+    axis
+    reverse
+
+Other, less commonly used parameters are:
+
+    high_point
+    low_point
+    first_point
+    last_point
+    max
+    min
+    empty_cells
+    show_hidden
+    date_axis
+    weight
+
+    series_color
+    negative_color
+    markers_color
+    first_color
+    last_color
+    high_color
+    low_color
+
+These parameters are explained in the sections below:
+
+=head2 location
+
+This is the cell where the sparkline will be displayed:
+
+    location => 'F1'
+
+The C<location> should be a single cell. (For multiple cells see L<Grouped Sparklines> below).
+
+To specify the location in row-column notation use the C<xl_rowcol_to_cell()> function from the L<Excel::Writer::XLSX::Utility> module.
+
+    use Excel::Writer::XLSX::Utility ':rowcol';
+    ...
+    location => xl_rowcol_to_cell( 0, 5 ), # F1
+
+
+=head2 range
+
+This specifies the cell data range that the sparkline will plot:
+
+    $worksheet->add_sparkline(
+        {
+            location => 'F1',
+            range    => 'A1:E1',
+        }
+    );
+
+The C<range> should be a 2D array. (For 3D arrays of cells see L<Grouped Sparklines> below).
+
+If C<range> is not on the same worksheet you can specify its location using the usual Excel notation:
+
+            range => 'Sheet1!A1:E1',
+
+If the worksheet contains spaces or special characters you should quote the worksheet name in the same way that Excel does:
+
+            range => q('Monthly Data'!A1:E1),
+
+To specify the location in row-column notation use the C<xl_range()> or C<xl_range_formula()> functions from the L<Excel::Writer::XLSX::Utility> module.
+
+    use Excel::Writer::XLSX::Utility ':rowcol';
+    ...
+    range => xl_range( 1, 1,  0, 4 ),                   # 'A1:E1'
+    range => xl_range_formula( 'Sheet1', 0, 0,  0, 4 ), # 'Sheet1!A2:E2'
+
+=head2 type
+
+Specifies the type of sparkline. There are 3 available sparkline types:
+
+    line    (default)
+    column
+    win_loss
+
+For example:
+
+    {
+        location => 'F1',
+        range    => 'A1:E1',
+        type     => 'column',
+    }
+
+
+=head2 style
+
+Excel provides 36 built-in Sparkline styles in 6 groups of 6. The C<style> parameter can be used to replicate these and should be a corresponding number from 1 .. 36.
+
+    {
+        location => 'A14',
+        range    => 'Sheet2!A2:J2',
+        style    => 3,
+    }
+
+The style number starts in the top left of the style grid and runs left to right. The default style is 1. It is possible to override colour elements of the sparklines using the C<*_color> parameters below.
+
+=head2 markers
+
+Turn on the markers for C<line> style sparklines.
+
+    {
+        location => 'A6',
+        range    => 'Sheet2!A1:J1',
+        markers  => 1,
+    }
+
+Markers aren't shown in Excel for C<column> and C<win_loss> sparklines.
+
+=head2 negative_points
+
+Highlight negative values in a sparkline range. This is usually required with C<win_loss> sparklines.
+
+    {
+        location        => 'A21',
+        range           => 'Sheet2!A3:J3',
+        type            => 'win_loss',
+        negative_points => 1,
+    }
+
+=head2 axis
+
+Display a horizontal axis in the sparkline:
+
+    {
+        location => 'A10',
+        range    => 'Sheet2!A1:J1',
+        axis     => 1,
+    }
+
+=head2 reverse
+
+Plot the data from right-to-left instead of the default left-to-right:
+
+    {
+        location => 'A24',
+        range    => 'Sheet2!A4:J4',
+        type     => 'column',
+        reverse  => 1,
+    }
+
+=head2 weight
+
+Adjust the default line weight (thickness) for C<line> style sparklines.
+
+     weight => 0.25,
+
+The weight value should be one of the following values allowed by Excel:
+
+    0.25  0.5   0.75
+    1     1.25
+    2.25
+    3
+    4.25
+    6
+
+=head2 high_point, low_point, first_point, last_point
+
+Highlight points in a sparkline range.
+
+        high_point  => 1,
+        low_point   => 1,
+        first_point => 1,
+        last_point  => 1,
+
+
+=head2 max, min
+
+Specify the maximum and minimum vertical axis values:
+
+        max         => 0.5,
+        min         => -0.5,
+
+As a special case you can set the maximum and minimum to be for a group of sparklines rather than one:
+
+        max         => 'group',
+
+See L<Grouped Sparklines> below.
+
+=head2 empty_cells
+
+Define how empty cells are handled in a sparkline.
+
+    empty_cells => 'zero',
+
+The available options are:
+
+    gaps   : show empty cells as gaps (the default).
+    zero   : plot empty cells as 0.
+    connect: Connect points with a line ("line" type  sparklines only).
+
+=head2 show_hidden
+
+Plot data in hidden rows and columns:
+
+    show_hidden => 1,
+
+Note, this option is off by default.
+
+=head2 date_axis
+
+Specify an alternative date axis for the sparkline. This is useful if the data being plotted isn't at fixed width intervals:
+
+    {
+        location  => 'F3',
+        range     => 'A3:E3',
+        date_axis => 'A4:E4',
+    }
+
+The number of cells in the date range should correspond to the number of cells in the data range.
+
+
+=head2 series_color
+
+It is possible to override the colour of a sparkline style using the following parameters:
+
+    series_color
+    negative_color
+    markers_color
+    first_color
+    last_color
+    high_color
+    low_color
+
+The color should be specified as a HTML style C<#rrggbb> hex value:
+
+    {
+        location     => 'A18',
+        range        => 'Sheet2!A2:J2',
+        type         => 'column',
+        series_color => '#E965E0',
+    }
+
+=head2 Grouped Sparklines
+
+The C<add_sparkline()> worksheet method can be used multiple times to write as many sparklines as are required in a worksheet.
+
+However, it is sometimes necessary to group contiguous sparklines so that changes that are applied to one are applied to all. In Excel this is achieved by selecting a 3D range of cells for the data C<range> and a 2D range of cells for the C<location>.
+
+In Excel::Writer::XLSX, you can simulate this by passing an array refs of values to C<location> and C<range>:
+
+    {
+        location => [ 'A27',          'A28',          'A29'          ],
+        range    => [ 'Sheet2!A5:J5', 'Sheet2!A6:J6', 'Sheet2!A7:J7' ],
+        markers  => 1,
+    }
+
+=head2 Sparkline examples
+
+See the C<sparklines1.pl> and C<sparklines2.pl> example programs in the C<examples> directory of the distro.
+
 
 
 
@@ -5597,9 +6056,12 @@ different features and options of the module. See L<Excel::Writer::XLSX::Example
     chart_column.pl         A demo of column (histogram) style charts.
     chart_line.pl           A demo of line style charts.
     chart_pie.pl            A demo of pie style charts.
+    chart_radar.pl          A demo of radar style charts.
     chart_scatter.pl        A demo of scatter style charts.
     chart_secondary_axis.pl A demo of a line chart with a secondary axis.
     chart_stock.pl          A demo of stock style charts.
+    chart_data_table.pl     A demo of a chart with a data table on the axis.
+    chart_data_tools.pl     A demo of charts with data highlighting options.
     colors.pl               A demo of the colour palette and named colours.
     comments1.pl            Add comments to worksheet cells.
     comments2.pl            Add comments with advanced options.
@@ -5610,10 +6072,12 @@ different features and options of the module. See L<Excel::Writer::XLSX::Example
     diag_border.pl          A simple example of diagonal cell borders.
     filehandle.pl           Examples of working with filehandles.
     headers.pl              Examples of worksheet headers and footers.
+    hide_row_col.pl         Example of hiding rows and columns.
     hide_sheet.pl           Simple example of hiding a worksheet.
     hyperlink1.pl           Shows how to create web hyperlinks.
     hyperlink2.pl           Examples of internal and external hyperlinks.
     indent.pl               An example of cell indentation.
+    macros.pl               An example of adding macros from an existing file.
     merge1.pl               A simple example of cell merging.
     merge2.pl               A simple example of cell merging with formatting.
     merge3.pl               Add hyperlinks to merged cells.
@@ -5625,7 +6089,6 @@ different features and options of the module. See L<Excel::Writer::XLSX::Example
     panes.pl                An examples of how to create panes.
     outline.pl              An example of outlines and grouping.
     outline_collapsed.pl    An example of collapsed outlines.
-    protection.pl           Example of cell locking and formula hiding.
     protection.pl           Example of cell locking and formula hiding.
     rich_strings.pl         Example of strings with multiple formats.
     right_to_left.pl        Change default sheet direction to right to left.
@@ -5639,6 +6102,8 @@ different features and options of the module. See L<Excel::Writer::XLSX::Example
     shape7.pl               Insert shapes in worksheet. One to many connections.
     shape8.pl               Insert shapes in worksheet. One to many connections.
     shape_all.pl            Demo of all the available shape and connector types.
+    sparklines1.pl          Simple sparklines demo.
+    sparklines2.pl          Sparklines demo showing formatting options.
     stats_ext.pl            Same as stats.pl with external references.
     stocks.pl               Demonstrates conditional formatting.
     tab_colors.pl           Example of how to set worksheet tab colours.
@@ -5689,7 +6154,7 @@ The following limits are imposed by Excel 2007+:
 
 The C<Excel::Writer::XLSX> module is a drop-in replacement for C<Spreadsheet::WriteExcel>.
 
-It support all of the features of Spreadsheet::WriteExcel with some minor differences noted below.
+It supports all of the features of Spreadsheet::WriteExcel with some minor differences noted below.
 
     Workbook Methods            Support
     ================            ======
@@ -5698,6 +6163,7 @@ It support all of the features of Spreadsheet::WriteExcel with some minor differ
     add_format()                Yes
     add_chart()                 Yes
     add_shape()                 Yes. Not in Spreadsheet::WriteExcel.
+    add_vba_project()           Yes. Not in Spreadsheet::WriteExcel.
     close()                     Yes
     set_properties()            Yes
     define_name()               Yes
@@ -5732,8 +6198,10 @@ It support all of the features of Spreadsheet::WriteExcel with some minor differ
     insert_image()              Yes/Partial, see docs.
     insert_chart()              Yes
     insert_shape()              Yes. Not in Spreadsheet::WriteExcel.
+    insert_button()             Yes. Not in Spreadsheet::WriteExcel.
     data_validation()           Yes
     conditional_formatting()    Yes. Not in Spreadsheet::WriteExcel.
+    add_sparkline()             Yes. Not in Spreadsheet::WriteExcel.
     add_table()                 Yes. Not in Spreadsheet::WriteExcel.
     get_name()                  Yes
     activate()                  Yes
@@ -5744,6 +6212,7 @@ It support all of the features of Spreadsheet::WriteExcel with some minor differ
     set_selection()             Yes
     set_row()                   Yes.
     set_column()                Yes.
+    set_default_row()           Yes. Not in Spreadsheet::WriteExcel.
     outline_settings()          Yes
     freeze_panes()              Yes
     split_panes()               Yes
@@ -6059,8 +6528,6 @@ The roadmap is as follows:
 
 =item * Pivot tables, maybe.
 
-=item * Macros, why not.
-
 =back
 
 
@@ -6109,7 +6576,7 @@ Bariatric Advantage (L<http://www.bariatricadvantage.com>) sponsored work on cha
 
 Eric Johnson provided the ability to use secondary axes with charts.  Thanks to Foxtons (L<http://foxtons.co.uk>) for sponsoring this work.
 
-BuildFax (L<http://www.buildfax.com>) sponsored the Tables feature.
+BuildFax (L<http://www.buildfax.com>) sponsored the Tables feature and the Chart point formatting feature.
 
 
 
@@ -6134,23 +6601,23 @@ Either the Perl Artistic Licence L<http://dev.perl.org/licenses/artistic.html> o
 
 John McNamara jmcnamara@cpan.org
 
-    The ashtray says
-    You were up all night.
-    When you went to bed
-    With your darkest mind.
-    Your pillow wept
-    And covered your eyes.
-    And you finally slept
-    While the sun caught fire.
+    Wilderness for miles, eyes so mild and wise
+    Oasis child, born and so wild
+    Don't I know you better than the rest
+    All deception, all deception from you
 
-    You've changed.
-      -- Jeff Tweedy
+    Any way you run, you run before us
+    Black and white horse arching among us
+    Any way you run, you run before us
+    Black and white horse arching among us
+
+      -- Beach House
 
 
 
 
 =head1 COPYRIGHT
 
-Copyright MM-MMXII, John McNamara.
+Copyright MM-MMXIII, John McNamara.
 
 All Rights Reserved. This module is free software. It may be used, redistributed and/or modified under the same terms as Perl itself.

@@ -23,9 +23,12 @@ chart_bar.pl            A demo of bar (vertical histogram) style charts.
 chart_column.pl         A demo of column (histogram) style charts.
 chart_line.pl           A demo of line style charts.
 chart_pie.pl            A demo of pie style charts.
+chart_radar.pl          A demo of radar style charts.
 chart_scatter.pl        A demo of scatter style charts.
 chart_secondary_axis.pl A demo of a line chart with a secondary axis.
 chart_stock.pl          A demo of stock style charts.
+chart_data_table.pl     A demo of a chart with a data table on the axis.
+chart_data_tools.pl     A demo of charts with data highlighting options.
 colors.pl               A demo of the colour palette and named colours.
 comments1.pl            Add comments to worksheet cells.
 comments2.pl            Add comments with advanced options.
@@ -36,10 +39,12 @@ defined_name.pl         Example of how to create defined names.
 diag_border.pl          A simple example of diagonal cell borders.
 filehandle.pl           Examples of working with filehandles.
 headers.pl              Examples of worksheet headers and footers.
+hide_row_col.pl         Example of hiding rows and columns.
 hide_sheet.pl           Simple example of hiding a worksheet.
 hyperlink1.pl           Shows how to create web hyperlinks.
 hyperlink2.pl           Examples of internal and external hyperlinks.
 indent.pl               An example of cell indentation.
+macros.pl               An example of adding macros from an existing file.
 merge1.pl               A simple example of cell merging.
 merge2.pl               A simple example of cell merging with formatting.
 merge3.pl               Add hyperlinks to merged cells.
@@ -50,7 +55,7 @@ mod_perl1.pl            A simple mod_perl 1 program.
 mod_perl2.pl            A simple mod_perl 2 program.
 outline.pl              An example of outlines and grouping.
 outline_collapsed.pl    An example of collapsed outlines.
-panes.pl                An examples of how to create panes.
+panes.pl                An example of how to create panes.
 properties.pl           Add document properties to a workbook.
 protection.pl           Example of cell locking and formula hiding.
 rich_strings.pl         Example of strings with multiple formats.
@@ -65,6 +70,8 @@ shape6.pl               Insert shapes in worksheet. With connections.
 shape7.pl               Insert shapes in worksheet. One to many connections.
 shape8.pl               Insert shapes in worksheet. One to many connections.
 shape_all.pl            Demo of all the available shape and connector types.
+sparklines1.pl          Simple sparklines demo.
+sparklines2.pl          Sparklines demo showing formatting options.
 stats_ext.pl            Same as stats.pl with external references.
 stocks.pl               Demonstrates conditional formatting.
 tab_colors.pl           Example of how to set worksheet tab colours.

@@ -2,7 +2,7 @@
 #
 # Tests for Excel::Writer::XLSX::Worksheet methods.
 #
-# reverse('(c)'), September 2011, John McNamara, jmcnamara@cpan.org
+# reverse ('(c)'), September 2011, John McNamara, jmcnamara@cpan.org
 #
 
 use lib 't/lib';
@@ -32,7 +32,7 @@ $expected = '<legacyDrawing r:id="rId1"/>';
 
 $worksheet = _new_worksheet(\$got);
 
-$worksheet->{_has_comments} = 1;
+$worksheet->{_has_vml} = 1;
 
 $worksheet->_write_legacy_drawing();
 

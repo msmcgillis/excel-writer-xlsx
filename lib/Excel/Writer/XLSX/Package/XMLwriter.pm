@@ -6,7 +6,7 @@ package Excel::Writer::XLSX::Package::XMLwriter;
 #
 # Used in conjunction with Excel::Writer::XLSX
 #
-# Copyright 2000-2012, John McNamara, jmcnamara@cpan.org
+# Copyright 2000-2013, John McNamara, jmcnamara@cpan.org
 #
 # Documentation after __END__
 #
@@ -21,12 +21,12 @@ use Carp;
 use IO::File;
 
 our @ISA     = qw(Exporter);
-our $VERSION = '0.53';
+our $VERSION = '0.67';
 
 #
 # NOTE: this module is a light weight re-implementation of XML::Writer. See
 # the Pod docs below for a full explanation. The methods  are implemented
-# for speed rather than readibility since they are used heavily in tight
+# for speed rather than readability since they are used heavily in tight
 # loops by Excel::Writer::XLSX.
 #
 
@@ -59,7 +59,7 @@ sub new {
 # _set_xml_writer()
 #
 # Set the XML writer filehandle for the object. This can either be done
-# in the constuctor (usually for testing since the file name isn't generally
+# in the constructor (usually for testing since the file name isn't generally
 # known at that stage) or later via this method.
 #
 sub _set_xml_writer {
@@ -97,8 +97,7 @@ sub xml_declaration {
 #
 # xml_start_tag()
 #
-# Write an XML start tag with optional attributes. As an optimisation the
-# attributes aren't encoded by default: the most common case.
+# Write an XML start tag with optional attributes.
 #
 sub xml_start_tag {
 
@@ -108,6 +107,7 @@ sub xml_start_tag {
     while ( @_ ) {
         my $key   = shift @_;
         my $value = shift @_;
+        $value = _escape_attributes( $value );
 
         $tag .= qq( $key="$value");
     }
@@ -119,11 +119,12 @@ sub xml_start_tag {
 
 ###############################################################################
 #
-# xml_start_tag()
+# xml_start_tag_unencoded()
 #
-# Write an XML start tag with optional, encoded, attributes.
+# Write an XML start tag with optional, unencoded, attributes.
+# This is a minor speed optimisation for elements that don't need encoding.
 #
-sub xml_start_tag_encoded {
+sub xml_start_tag_unencoded {
 
     my $self = shift;
     my $tag  = shift;
@@ -131,7 +132,6 @@ sub xml_start_tag_encoded {
     while ( @_ ) {
         my $key   = shift @_;
         my $value = shift @_;
-        $value = _escape_xml_chars( $value );
 
         $tag .= qq( $key="$value");
     }
@@ -171,6 +171,7 @@ sub xml_empty_tag {
     while ( @_ ) {
         my $key   = shift @_;
         my $value = shift @_;
+        $value = _escape_attributes( $value );
 
         $tag .= qq( $key="$value");
     }
@@ -183,11 +184,12 @@ sub xml_empty_tag {
 
 ###############################################################################
 #
-# xml_encoded_empty_tag()
+# xml_empty_tag_unencoded()
 #
-# Write an empty XML tag with optional encoded attributes.
+# Write an empty XML tag with optional, unencoded, attributes.
+# This is a minor speed optimisation for elements that don't need encoding.
 #
-sub xml_encoded_empty_tag {
+sub xml_empty_tag_unencoded {
 
     my $self = shift;
     my $tag  = shift;
@@ -195,7 +197,6 @@ sub xml_encoded_empty_tag {
     while ( @_ ) {
         my $key   = shift @_;
         my $value = shift @_;
-        $value = _escape_xml_chars( $value );
 
         $tag .= qq( $key="$value");
     }
@@ -223,11 +224,12 @@ sub xml_data_element {
     while ( @_ ) {
         my $key   = shift @_;
         my $value = shift @_;
+        $value = _escape_attributes( $value );
 
         $tag .= qq( $key="$value");
     }
 
-    $data = _escape_xml_chars( $data );
+    $data = _escape_data( $data );
 
     local $\ = undef;
     print { $self->{_fh} } "<$tag>$data</$end_tag>";
@@ -236,12 +238,12 @@ sub xml_data_element {
 
 ###############################################################################
 #
-# xml_encoded_data_element()
+# xml_data_element_unencoded()
 #
-# Write an XML element containing data with optional, encoded, attributes.
-# XML characters in the data are encoded.
+# Write an XML unencoded element containing data with optional attributes.
+# This is a minor speed optimisation for elements that don't need encoding.
 #
-sub xml_encoded_data_element {
+sub xml_data_element_unencoded {
 
     my $self    = shift;
     my $tag     = shift;
@@ -251,12 +253,9 @@ sub xml_encoded_data_element {
     while ( @_ ) {
         my $key   = shift @_;
         my $value = shift @_;
-        $value = _escape_xml_chars( $value );
 
         $tag .= qq( $key="$value");
     }
-
-    $data = _escape_xml_chars( $data );
 
     local $\ = undef;
     print { $self->{_fh} } "<$tag>$data</$end_tag>";
@@ -305,7 +304,7 @@ sub xml_si_element {
         $attr .= qq( $key="$value");
     }
 
-    $string = _escape_xml_chars( $string );
+    $string = _escape_data( $string );
 
     local $\ = undef;
     print { $self->{_fh} } "<si><t$attr>$string</t></si>";
@@ -337,9 +336,9 @@ sub xml_rich_si_element {
 #
 sub xml_number_element {
 
-    my $self  = shift;
-    my $index = shift;
-    my $attr  = '';
+    my $self   = shift;
+    my $number = shift;
+    my $attr   = '';
 
     while ( @_ ) {
         my $key   = shift;
@@ -348,7 +347,7 @@ sub xml_number_element {
     }
 
     local $\ = undef;
-    print { $self->{_fh} } "<c$attr><v>$index</v></c>";
+    print { $self->{_fh} } "<c$attr><v>$number</v></c>";
 }
 
 
@@ -362,7 +361,7 @@ sub xml_formula_element {
 
     my $self    = shift;
     my $formula = shift;
-    my $value   = shift;
+    my $result  = shift;
     my $attr    = '';
 
     while ( @_ ) {
@@ -371,10 +370,10 @@ sub xml_formula_element {
         $attr .= qq( $key="$value");
     }
 
-    $formula = _escape_xml_chars( $formula );
+    $formula = _escape_data( $formula );
 
     local $\ = undef;
-    print { $self->{_fh} } "<c$attr><f>$formula</f><v>$value</v></c>";
+    print { $self->{_fh} } "<c$attr><f>$formula</f><v>$result</v></c>";
 }
 
 
@@ -401,7 +400,7 @@ sub xml_inline_string {
         $attr .= qq( $key="$value");
     }
 
-    $string = _escape_xml_chars( $string );
+    $string = _escape_data( $string );
 
     local $\ = undef;
     print { $self->{_fh} }
@@ -448,11 +447,35 @@ sub xml_get_fh {
 
 ###############################################################################
 #
-# _escape_xml_chars()
+# _escape_attributes()
 #
-# Escape XML characters.
+# Escape XML characters in attributes.
 #
-sub _escape_xml_chars {
+sub _escape_attributes {
+
+    my $str = $_[0];
+
+    return $str if $str !~ m/["&<>]/;
+
+    for ( $str ) {
+        s/&/&amp;/g;
+        s/"/&quot;/g;
+        s/</&lt;/g;
+        s/>/&gt;/g;
+    }
+
+    return $str;
+}
+
+
+###############################################################################
+#
+# _escape_data()
+#
+# Escape XML characters in data sections. Note, this is different from
+# _escape_attributes() in that double quotes are not escaped by Excel.
+#
+sub _escape_data {
 
     my $str = $_[0];
 
@@ -495,7 +518,7 @@ John McNamara jmcnamara@cpan.org
 
 =head1 COPYRIGHT
 
-© MM-MMXII, John McNamara.
+(c) MM-MMXIII, John McNamara.
 
 All Rights Reserved. This module is free software. It may be used, redistributed and/or modified under the same terms as Perl itself.
 

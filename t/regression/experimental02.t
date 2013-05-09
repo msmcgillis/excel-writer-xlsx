@@ -53,7 +53,7 @@ $chart->add_series( values => '=Sheet1!$B$1:$B$5' );
 $chart->add_series( values => '=Sheet1!$C$1:$C$5' );
 
 $chart->set_title( name=>"Testing",
-                   font=>{
+                   name_font=>{
                        name      => "Helvetica",
                        color     => "blue",
                        size      => "32",

@@ -4,10 +4,10 @@
 #
 # Example of how to add tables to an Excel::Writer::XLSX worksheet.
 #
-# Tables in Excel are use to group rows and columns of data into a single
-# structure that can be references in a formula or formatted collectively.
+# Tables in Excel are used to group rows and columns of data into a single
+# structure that can be referenced in a formula or formatted collectively.
 #
-# reverse('©'), September 2012, John McNamara, jmcnamara@cpan.org
+# reverse ('(c)'), September 2012, John McNamara, jmcnamara@cpan.org
 #
 
 use strict;
@@ -235,7 +235,7 @@ $worksheet9->add_table(
             { header => 'Quarter 4' },
             {
                 header  => 'Year',
-                formula => '=SUM(Table8[@[Quarter 1]:[Quarter 4]])'
+                formula => '=SUM(Table9[@[Quarter 1]:[Quarter 4]])'
             },
         ]
     }
@@ -268,7 +268,7 @@ $worksheet10->add_table(
             { header => 'Quarter 4', total_function => 'sum' },
             {
                 header         => 'Year',
-                formula        => '=SUM(Table8[@[Quarter 1]:[Quarter 4]])',
+                formula        => '=SUM(Table10[@[Quarter 1]:[Quarter 4]])',
                 total_function => 'sum'
             },
         ]
@@ -303,7 +303,7 @@ $worksheet11->add_table(
             { header => 'Quarter 4', total_function => 'sum' },
             {
                 header         => 'Year',
-                formula        => '=SUM(Table8[@[Quarter 1]:[Quarter 4]])',
+                formula        => '=SUM(Table11[@[Quarter 1]:[Quarter 4]])',
                 total_function => 'sum'
             },
         ]
@@ -353,7 +353,7 @@ $worksheet12->add_table(
             },
             {
                 header         => 'Year',
-                formula        => '=SUM(Table8[@[Quarter 1]:[Quarter 4]])',
+                formula        => '=SUM(Table12[@[Quarter 1]:[Quarter 4]])',
                 total_function => 'sum',
                 format         => $currency_format,
             },

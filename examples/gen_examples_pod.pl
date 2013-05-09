@@ -5,7 +5,7 @@
 # Simple utility to convert the example programs listed in the README file into
 # a Pod doc for easier access via CPAN.
 #
-# reverse('©'), November 2009, John McNamara, jmcnamara@cpan.org
+# reverse ('(c)'), November 2009, John McNamara, jmcnamara@cpan.org
 #
 
 use strict;
@@ -97,6 +97,8 @@ sub print_header {
     print "__END__\n\n";
 
     print "=pod\n\n";
+
+    print "=encoding ISO8859-1\n\n";
 
     print "=head1 NAME\n\n";
 
@@ -288,9 +290,12 @@ chart_bar.jpg
 chart_column.jpg
 chart_line.jpg
 chart_pie.jpg
+chart_radar.jpg
 chart_scatter.jpg
 chart_secondary_axis.jpg
 chart_stock.jpg
+chart_data_table.jpg
+chart_data_tools.jpg
 chess.jpg
 colors.jpg
 comments1.jpg
@@ -306,10 +311,12 @@ filehandle.jpg
 formats.jpg
 formula_result.jpg
 headers.jpg
+hide_row_col.jpg
 hide_sheet.jpg
 hyperlink1.jpg
 images.jpg
 indent.jpg
+macros.jpg
 merge1.jpg
 merge2.jpg
 merge3.jpg
@@ -336,6 +343,8 @@ shape6.jpg
 shape7.jpg
 shape8.jpg
 shape_all.jpg
+sparklines1.jpg
+sparklines2.jpg
 stats.jpg
 stats_ext.jpg
 stocks.jpg

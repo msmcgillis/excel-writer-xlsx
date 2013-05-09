@@ -8,7 +8,7 @@ package Excel::Writer::XLSX::Chart::Scatter;
 #
 # See formatting note in Excel::Writer::XLSX::Chart.
 #
-# Copyright 2000-2012, John McNamara, jmcnamara@cpan.org
+# Copyright 2000-2013, John McNamara, jmcnamara@cpan.org
 #
 # Documentation after __END__
 #
@@ -22,7 +22,7 @@ use Carp;
 use Excel::Writer::XLSX::Chart;
 
 our @ISA     = qw(Excel::Writer::XLSX::Chart);
-our $VERSION = '0.53';
+our $VERSION = '0.67';
 
 
 ###############################################################################
@@ -143,11 +143,17 @@ sub _write_ser {
     # Write the c:marker element.
     $self->_write_marker( $series->{_marker} );
 
+    # Write the c:dPt element.
+    $self->_write_d_pt( $series->{_points} );
+
     # Write the c:dLbls element.
     $self->_write_d_lbls( $series->{_labels} );
 
     # Write the c:trendline element.
     $self->_write_trendline( $series->{_trendline} );
+
+    # Write the c:errBars element.
+    $self->_write_error_bars( $series->{_error_bars} );
 
     # Write the c:xVal element.
     $self->_write_x_val( $series );
@@ -215,6 +221,9 @@ sub _write_plot_area {
         axis_ids => $self->{_axis2_ids},
         position => 'l',
     );
+
+    # Write the c:spPr element for the plotarea formatting.
+    $self->_write_sp_pr( $self->{_plotarea} );
 
     $self->xml_end_tag( 'c:plotArea' );
 }
@@ -366,6 +375,35 @@ sub _modify_series_formatting {
 }
 
 
+##############################################################################
+#
+# _write_d_pt_point()
+#
+# Write an individual <c:dPt> element. Override the parent method to add
+# markers.
+#
+sub _write_d_pt_point {
+
+    my $self   = shift;
+    my $index = shift;
+    my $point = shift;
+
+        $self->xml_start_tag( 'c:dPt' );
+
+        # Write the c:idx element.
+        $self->_write_idx( $index );
+
+        $self->xml_start_tag( 'c:marker' );
+
+        # Write the c:spPr element.
+        $self->_write_sp_pr( $point );
+
+        $self->xml_end_tag( 'c:marker' );
+
+        $self->xml_end_tag( 'c:dPt' );
+}
+
+
 1;
 
 
@@ -501,7 +539,7 @@ Here is a complete example that demonstrates most of the available features when
 
 <p>This will produce a chart that looks like this:</p>
 
-<p><center><img src="http://homepage.eircom.net/~jmcnamara/perl/images/2007/scatter1.jpg" width="483" height="291" alt="Chart example." /></center></p>
+<p><center><img src="http://jmcnamara.github.com/excel-writer-xlsx/images/examples/scatter1.jpg" width="483" height="291" alt="Chart example." /></center></p>
 
 =end html
 
@@ -512,7 +550,7 @@ John McNamara jmcnamara@cpan.org
 
 =head1 COPYRIGHT
 
-Copyright MM-MMXII, John McNamara.
+Copyright MM-MMXIII, John McNamara.
 
 All Rights Reserved. This module is free software. It may be used, redistributed and/or modified under the same terms as Perl itself.
 

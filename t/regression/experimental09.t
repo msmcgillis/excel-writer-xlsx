@@ -52,7 +52,7 @@ $chart->add_series( values => '=Sheet1!$A$1:$A$5' );
 $chart->add_series( values => '=Sheet1!$B$1:$B$5' );
 $chart->add_series( values => '=Sheet1!$C$1:$C$5' );
 
-$chart->set_x_axis( number_font=>{
+$chart->set_x_axis( num_font=>{
                        name      => "Helvetica",
                        color     => "blue",
                        size      => "9",
@@ -60,7 +60,7 @@ $chart->set_x_axis( number_font=>{
                        italic    => 1,
                        underline => 1});
 
-$chart->set_y_axis( number_font=>{
+$chart->set_y_axis( num_font=>{
                        name      => "Helvetica",
                        color     => "blue",
                        size      => "9",

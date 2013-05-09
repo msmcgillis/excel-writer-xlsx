@@ -7,7 +7,7 @@ package Excel::Writer::XLSX::Worksheet;
 #
 # Used in conjunction with Excel::Writer::XLSX
 #
-# Copyright 2000-2012, John McNamara, jmcnamara@cpan.org
+# Copyright 2000-2013, John McNamara, jmcnamara@cpan.org
 #
 # Documentation after __END__
 #
@@ -27,7 +27,7 @@ use Excel::Writer::XLSX::Utility
   qw(xl_cell_to_rowcol xl_rowcol_to_cell xl_col_to_name xl_range);
 
 our @ISA     = qw(Excel::Writer::XLSX::Package::XMLwriter);
-our $VERSION = '0.53';
+our $VERSION = '0.67';
 
 
 ###############################################################################
@@ -65,8 +65,9 @@ sub new {
     $self->{_optimization} = $_[10] || 0;
     $self->{_tempdir}      = $_[11];
 
-    $self->{_ext_sheets} = [];
-    $self->{_fileclosed} = 0;
+    $self->{_ext_sheets}    = [];
+    $self->{_fileclosed}    = 0;
+    $self->{_excel_version} = 2007;
 
     $self->{_xls_rowmax} = $rowmax;
     $self->{_xls_colmax} = $colmax;
@@ -146,21 +147,25 @@ sub new {
     $self->{_outline_on}        = 1;
     $self->{_outline_changed}   = 0;
 
+    $self->{_default_row_height} = 15;
+    $self->{_default_row_zeroed} = 0;
+
     $self->{_names} = {};
 
     $self->{_write_match} = [];
 
-    $self->{prev_col} = -1;
 
     $self->{_table} = {};
     $self->{_merge} = [];
 
+    $self->{_has_vml}          = 0;
     $self->{_has_comments}     = 0;
     $self->{_comments}         = {};
     $self->{_comments_array}   = [];
     $self->{_comments_author}  = '';
     $self->{_comments_visible} = 0;
     $self->{_vml_shape_id}     = 1024;
+    $self->{_buttons_array}    = [];
 
     $self->{_autofilter}   = '';
     $self->{_filter_on}    = 0;
@@ -186,6 +191,7 @@ sub new {
     $self->{_charts}                 = [];
     $self->{_images}                 = [];
     $self->{_tables}                 = [];
+    $self->{_sparklines}             = [];
     $self->{_shapes}                 = [];
     $self->{_shape_hash}             = {};
     $self->{_drawing}                = 0;
@@ -196,8 +202,6 @@ sub new {
     if ( $self->{_optimization} == 1 ) {
         my $fh = tempfile( DIR => $self->{_tempdir} );
         binmode $fh, ':utf8';
-
-        my $writer = Excel::Writer::XLSX::Package::XMLwriter->new( $fh );
 
         $self->{_cell_data_fh} = $fh;
         $self->{_fh}           = $fh;
@@ -321,8 +325,8 @@ sub _assemble_xml_file {
     # Write the tableParts element.
     $self->_write_table_parts();
 
-    # Write the worksheet extension storage.
-    #$self->_write_ext_lst();
+    # Write the extLst and sparklines.
+    $self->_write_ext_sparklines();
 
     # Close the worksheet tag.
     $self->xml_end_tag( 'worksheet' );
@@ -650,7 +654,7 @@ sub set_selection {
             $sqref = $active_cell;
         }
         else {
-            $sqref = xl_range( $row_first, $col_first, $row_last, $col_last );
+            $sqref = xl_range( $row_first, $row_last, $col_first, $col_last );
         }
 
     }
@@ -2017,6 +2021,7 @@ sub write_comment {
     # Check that row and col are valid and store max and min values
     return -2 if $self->_check_dimensions( $row, $col );
 
+    $self->{_has_vml}     = 1;
     $self->{_has_comments} = 1;
 
     # Process the properties of the cell comment.
@@ -2561,18 +2566,28 @@ sub write_url {
         $str_error = -3;
     }
 
-    # Store the URL displayed text in the shared string table.
-    my $index = $self->_get_shared_string_index( $str );
+    # Copy string for use in hyperlink elements.
+    my $url_str = $str;
 
     # External links to URLs and to other Excel workbooks have slightly
     # different characteristics that we have to account for.
     if ( $link_type == 1 ) {
 
-        # Substiture white space in url.
-        $url =~ s/[\s\x00]/%20/;
+        # Escape URL unless it looks already escaped.
+        if ( $url !~ /%[0-9a-fA-F]{2}/ ) {
+
+            # Escape the URL escape symbol.
+            $url =~ s/%/%25/g;
+
+            # Escape whitespace in URL.
+            $url =~ s/[\s\x00]/%20/g;
+
+            # Escape other special characters in URL.
+            $url =~ s/(["<>[\]`^{}])/sprintf '%%%x', ord $1/eg;
+        }
 
         # Ordinary URL style external links don't have a "location" string.
-        $str = undef;
+        $url_str = undef;
     }
     elsif ( $link_type == 3 ) {
 
@@ -2580,7 +2595,7 @@ sub write_url {
         # The URL will look something like 'c:\temp\file.xlsx#Sheet!A1'.
         # We need the part to the left of the # as the URL and the part to
         # the right as the "location" string (if it exists).
-        ( $url, $str ) = split /#/, $url;
+        ( $url, $url_str ) = split /#/, $url;
 
         # Add the file:/// URI to the $url if non-local.
         if (
@@ -2622,10 +2637,16 @@ sub write_url {
         $self->_write_single_row( $row );
     }
 
-    $self->{_table}->{$row}->{$col} =
+    # Write the hyperlink string.
+    $self->write_string( $row, $col, $str, $xf );
 
-      # 0      1       2    3           4     5     6
-      [ $type, $index, $xf, $link_type, $url, $str, $tip ];
+    # Store the hyperlink data in a separate structure.
+    $self->{_hyperlinks}->{$row}->{$col} = {
+        _link_type => $link_type,
+        _url       => $url,
+        _str       => $url_str,
+        _tip       => $tip
+    };
 
     return $str_error;
 }
@@ -2842,6 +2863,9 @@ sub set_row {
 
     return unless defined $row;    # Ensure at least $row is specified.
 
+    # Get the default row height.
+    my $default_height = $self->{_default_row_height};
+
     # Use min col in _check_dimensions(). Default to 0 if undefined.
     if ( defined $self->{_dim_colmin} ) {
         $min_col = $self->{_dim_colmin};
@@ -2850,12 +2874,12 @@ sub set_row {
     # Check that row is valid.
     return -2 if $self->_check_dimensions( $row, $min_col );
 
-    $height = 15 if !defined $height;
+    $height = $default_height if !defined $height;
 
     # If the height is 0 the row is hidden and the height is the default.
     if ( $height == 0 ) {
         $hidden = 1;
-        $height = 15;
+        $height = $default_height;
     }
 
     # Set the limits for the outline levels (0 <= x <= 7).
@@ -2874,6 +2898,31 @@ sub set_row {
 
     # Store the row sizes for use when calculating image vertices.
     $self->{_row_sizes}->{$row} = $height;
+}
+
+
+###############################################################################
+#
+# set_default_row()
+#
+# Set the default row properties
+#
+sub set_default_row {
+
+    my $self        = shift;
+    my $height      = shift || 15;
+    my $zero_height = shift || 0;
+
+    if ( $height != 15 ) {
+        $self->{_default_row_height} = $height;
+
+        # Store the row change to allow optimisations.
+        $self->{_row_size_changed} = 1;
+    }
+
+    if ( $zero_height ) {
+        $self->{_default_row_zeroed} = 1;
+    }
 }
 
 
@@ -3547,13 +3596,13 @@ sub conditional_formatting {
         }
         elsif ( $param->{criteria} eq 'beginsWith' ) {
             $param->{type}    = 'beginsWith';
-            $param->{formula} = sprintf 'LEFT(%s,1)="%s"',
-              $start_cell, $param->{value};
+            $param->{formula} = sprintf 'LEFT(%s,%d)="%s"',
+              $start_cell, length( $param->{value} ), $param->{value};
         }
         elsif ( $param->{criteria} eq 'endsWith' ) {
             $param->{type}    = 'endsWith';
-            $param->{formula} = sprintf 'RIGHT(%s,1)="%s"',
-              $start_cell, $param->{value};
+            $param->{formula} = sprintf 'RIGHT(%s,%d)="%s"',
+              $start_cell, length( $param->{value} ), $param->{value};
         }
         else {
             carp "Invalid text criteria '$param->{criteria}' "
@@ -3988,6 +4037,223 @@ sub add_table {
 
 ###############################################################################
 #
+# add_sparkline()
+#
+# Add sparklines to the worksheet.
+#
+sub add_sparkline {
+
+    my $self      = shift;
+    my $param     = shift;
+    my $sparkline = {};
+
+    # Check that the last parameter is a hash list.
+    if ( ref $param ne 'HASH' ) {
+        carp "Parameter list in add_sparkline() must be a hash ref";
+        return -1;
+    }
+
+    # List of valid input parameters.
+    my %valid_parameter = (
+        location        => 1,
+        range           => 1,
+        type            => 1,
+        high_point      => 1,
+        low_point       => 1,
+        negative_points => 1,
+        first_point     => 1,
+        last_point      => 1,
+        markers         => 1,
+        style           => 1,
+        series_color    => 1,
+        negative_color  => 1,
+        markers_color   => 1,
+        first_color     => 1,
+        last_color      => 1,
+        high_color      => 1,
+        low_color       => 1,
+        max             => 1,
+        min             => 1,
+        axis            => 1,
+        reverse         => 1,
+        empty_cells     => 1,
+        show_hidden     => 1,
+        plot_hidden     => 1,
+        date_axis       => 1,
+        weight          => 1,
+    );
+
+    # Check for valid input parameters.
+    for my $param_key ( keys %$param ) {
+        if ( not exists $valid_parameter{$param_key} ) {
+            carp "Unknown parameter '$param_key' in add_sparkline()";
+            return -2;
+        }
+    }
+
+    # 'location' is a required parameter.
+    if ( not exists $param->{location} ) {
+        carp "Parameter 'location' is required in add_sparkline()";
+        return -3;
+    }
+
+    # 'range' is a required parameter.
+    if ( not exists $param->{range} ) {
+        carp "Parameter 'range' is required in add_sparkline()";
+        return -3;
+    }
+
+
+    # Handle the sparkline type.
+    my $type = $param->{type} || 'line';
+
+    if ( $type ne 'line' && $type ne 'column' && $type ne 'win_loss' ) {
+        carp "Parameter 'type' must be 'line', 'column' "
+          . "or 'win_loss' in add_sparkline()";
+        return -4;
+    }
+
+    $type = 'stacked' if $type eq 'win_loss';
+    $sparkline->{_type} = $type;
+
+
+    # We handle single location/range values or array refs of values.
+    if ( ref $param->{location} ) {
+        $sparkline->{_locations} = $param->{location};
+        $sparkline->{_ranges}    = $param->{range};
+    }
+    else {
+        $sparkline->{_locations} = [ $param->{location} ];
+        $sparkline->{_ranges}    = [ $param->{range} ];
+    }
+
+    my $range_count    = @{ $sparkline->{_ranges} };
+    my $location_count = @{ $sparkline->{_locations} };
+
+    # The ranges and locations must match.
+    if ( $range_count != $location_count ) {
+        carp "Must have the same number of location and range "
+          . "parameters in add_sparkline()";
+        return -5;
+    }
+
+    # Store the count.
+    $sparkline->{_count} = @{ $sparkline->{_locations} };
+
+
+    # Get the worksheet name for the range conversion below.
+    my $sheetname = $self->_quote_sheetname( $self->{_name} );
+
+    # Cleanup the input ranges.
+    for my $range ( @{ $sparkline->{_ranges} } ) {
+
+        # Remove the absolute reference $ symbols.
+        $range =~ s{\$}{}g;
+
+        # Remove the = from xl_range_formula(.
+        $range =~ s{^=}{};
+
+        # Convert a simple range into a full Sheet1!A1:D1 range.
+        if ( $range !~ /!/ ) {
+            $range = $sheetname . "!" . $range;
+        }
+    }
+
+    # Cleanup the input locations.
+    for my $location ( @{ $sparkline->{_locations} } ) {
+        $location =~ s{\$}{}g;
+    }
+
+    # Map options.
+    $sparkline->{_high}     = $param->{high_point};
+    $sparkline->{_low}      = $param->{low_point};
+    $sparkline->{_negative} = $param->{negative_points};
+    $sparkline->{_first}    = $param->{first_point};
+    $sparkline->{_last}     = $param->{last_point};
+    $sparkline->{_markers}  = $param->{markers};
+    $sparkline->{_min}      = $param->{min};
+    $sparkline->{_max}      = $param->{max};
+    $sparkline->{_axis}     = $param->{axis};
+    $sparkline->{_reverse}  = $param->{reverse};
+    $sparkline->{_hidden}   = $param->{show_hidden};
+    $sparkline->{_weight}   = $param->{weight};
+
+    # Map empty cells options.
+    my $empty = $param->{empty_cells} || '';
+
+    if ( $empty eq 'zero' ) {
+        $sparkline->{_empty} = 0;
+    }
+    elsif ( $empty eq 'connect' ) {
+        $sparkline->{_empty} = 'span';
+    }
+    else {
+        $sparkline->{_empty} = 'gap';
+    }
+
+
+    # Map the date axis range.
+    my $date_range = $param->{date_axis};
+
+    if ( $date_range && $date_range !~ /!/ ) {
+        $date_range = $sheetname . "!" . $date_range;
+    }
+    $sparkline->{_date_axis} = $date_range;
+
+
+    # Set the sparkline styles.
+    my $style_id = $param->{style} || 0;
+    my $style = $Excel::Writer::XLSX::Package::Theme::spark_styles[$style_id];
+
+    $sparkline->{_series_color}   = $style->{series};
+    $sparkline->{_negative_color} = $style->{negative};
+    $sparkline->{_markers_color}  = $style->{markers};
+    $sparkline->{_first_color}    = $style->{first};
+    $sparkline->{_last_color}     = $style->{last};
+    $sparkline->{_high_color}     = $style->{high};
+    $sparkline->{_low_color}      = $style->{low};
+
+    # Override the style colours with user defined colors.
+    $self->_set_spark_color( $sparkline, $param, 'series_color' );
+    $self->_set_spark_color( $sparkline, $param, 'negative_color' );
+    $self->_set_spark_color( $sparkline, $param, 'markers_color' );
+    $self->_set_spark_color( $sparkline, $param, 'first_color' );
+    $self->_set_spark_color( $sparkline, $param, 'last_color' );
+    $self->_set_spark_color( $sparkline, $param, 'high_color' );
+    $self->_set_spark_color( $sparkline, $param, 'low_color' );
+
+    push @{ $self->{_sparklines} }, $sparkline;
+}
+
+
+###############################################################################
+#
+# insert_button()
+#
+# Insert a button form object into the worksheet.
+#
+sub insert_button {
+
+    my $self = shift;
+
+    # Check for a cell reference in A1 notation and substitute row and column
+    if ( $_[0] =~ /^\D/ ) {
+        @_ = $self->_substitute_cellref( @_ );
+    }
+
+    # Check the number of args.
+    if ( @_ < 3 ) { return -1 }
+
+    my $button = $self->_button_params( @_ );
+
+    push @{ $self->{_buttons_array} }, $button;
+
+    $self->{_has_vml} = 1;
+}
+
+
+###############################################################################
+#
 # Internal methods.
 #
 ###############################################################################
@@ -4025,6 +4291,27 @@ sub _table_function_to_formula {
     }
 
     return $formula;
+}
+
+
+###############################################################################
+#
+# _set_spark_color()
+#
+# Set the sparkline colour.
+#
+sub _set_spark_color {
+
+    my $self        = shift;
+    my $sparkline   = shift;
+    my $param       = shift;
+    my $user_color  = shift;
+    my $spark_color = '_' . $user_color;
+
+    return unless $param->{$user_color};
+
+    $sparkline->{$spark_color} =
+      { _rgb => $self->_get_palette_color( $param->{$user_color} ) };
 }
 
 
@@ -4169,7 +4456,7 @@ sub _cell_to_rowcol {
 # _xl_rowcol_to_cell($row, $col)
 #
 # Optimised version of xl_rowcol_to_cell from Utility.pm for the inner loop
-# of write_cell().
+# of _write_cell().
 #
 
 our @col_names = ( 'A' .. 'XFD' );
@@ -4441,12 +4728,12 @@ sub _position_object_emus {
     ) = $self->_position_object_pixels( @_, $is_drawing );
 
     # Convert the pixel values to EMUs. See above.
-    $x1    *= 9_525;
-    $y1    *= 9_525;
-    $x2    *= 9_525;
-    $y2    *= 9_525;
-    $x_abs *= 9_525;
-    $y_abs *= 9_525;
+    $x1    = int( 0.5 + 9_525 * $x1 );
+    $y1    = int( 0.5 + 9_525 * $y1 );
+    $x2    = int( 0.5 + 9_525 * $x2 );
+    $y2    = int( 0.5 + 9_525 * $y2 );
+    $x_abs = int( 0.5 + 9_525 * $x_abs );
+    $y_abs = int( 0.5 + 9_525 * $y_abs );
 
     return (
         $col_start, $row_start, $x1, $y1,
@@ -4571,7 +4858,7 @@ sub _size_row {
         }
     }
     else {
-        $pixels = 20;
+        $pixels = int( 4 / 3 * $self->{_default_row_height} );
     }
 
     return $pixels;
@@ -4674,7 +4961,7 @@ sub _get_shared_string_index {
 
 ###############################################################################
 #
-# insert_chart( $row, $col, $chart, $x, $y, $scale_x, $scale_y )
+# insert_chart( $row, $col, $chart, $x, $y, $x_scale, $y_scale )
 #
 # Insert a chart into a worksheet. The $chart argument should be a Chart
 # object or else it is assumed to be a filename of an external binary file.
@@ -4694,8 +4981,8 @@ sub insert_chart {
     my $chart    = $_[2];
     my $x_offset = $_[3] || 0;
     my $y_offset = $_[4] || 0;
-    my $scale_x  = $_[5] || 1;
-    my $scale_y  = $_[6] || 1;
+    my $x_scale  = $_[5] || 1;
+    my $y_scale  = $_[6] || 1;
 
     croak "Insufficient arguments in insert_chart()" unless @_ >= 3;
 
@@ -4711,34 +4998,14 @@ sub insert_chart {
 
     }
 
+    # Use the values set with $chart->set_size(), if any.
+    $x_scale  = $chart->{_x_scale}  if $chart->{_x_scale} != 1;
+    $y_scale  = $chart->{_y_scale}  if $chart->{_y_scale} != 1;
+    $x_offset = $chart->{_x_offset} if $chart->{_x_offset};
+    $x_offset = $chart->{_y_offset} if $chart->{_y_offset};
+
     push @{ $self->{_charts} },
-      [ $row, $col, $chart, $x_offset, $y_offset, $scale_x, $scale_y ];
-}
-
-
-###############################################################################
-#
-# _sort_charts()
-#
-# Sort the worksheet charts into the order that they were created in rather
-# than the insertion order. This is ensure that the chart and drawing objects
-# written in the same order. The chart id is used to sort back into creation
-# order.
-#
-sub _sort_charts {
-
-    my $self        = shift;
-    my $chart_count = scalar @{ $self->{_charts} };
-
-    # Return if no sorting is required.
-    return if $chart_count < 2;
-
-    my @chart_data = @{ $self->{_charts} };
-
-    # Sort the charts into creation order based on the chart id.
-    @chart_data = sort { $a->[2]->{_id} <=> $b->[2]->{_id} } @chart_data;
-
-    $self->{_charts} = \@chart_data;
+      [ $row, $col, $chart, $x_offset, $y_offset, $x_scale, $y_scale ];
 }
 
 
@@ -4756,15 +5023,21 @@ sub _prepare_chart {
     my $drawing_id   = shift;
     my $drawing_type = 1;
 
-    my ( $row, $col, $chart, $x_offset, $y_offset, $scale_x, $scale_y ) =
+    my ( $row, $col, $chart, $x_offset, $y_offset, $x_scale, $y_scale ) =
       @{ $self->{_charts}->[$index] };
 
-    my $width  = int( 0.5 + ( 480 * $scale_x ) );
-    my $height = int( 0.5 + ( 288 * $scale_y ) );
+    $chart->{_id} = $chart_id - 1;
+
+    # Use user specified dimensions, if any.
+    my $width  = $chart->{_width}  if $chart->{_width};
+    my $height = $chart->{_height} if $chart->{_height};
+
+    $width  = int( 0.5 + ( $width  * $x_scale ) );
+    $height = int( 0.5 + ( $height * $y_scale ) );
 
     my @dimensions =
       $self->_position_object_emus( $col, $row, $x_offset, $y_offset, $width,
-        $height );
+        $height, 0 );
 
     # Set the chart name for the embedded object if it has been specified.
     my $name = $chart->{_chart_name};
@@ -4856,11 +5129,6 @@ sub _get_range_data {
                     # Store an array formula.
                     push @data, $cell->[4] || 0;
                 }
-                elsif ( $type eq 'l' ) {
-
-                    # Store the string part a hyperlink.
-                    push @data, { 'sst_id' => $token };
-                }
                 elsif ( $type eq 'b' ) {
 
                     # Store a empty cell.
@@ -4881,7 +5149,7 @@ sub _get_range_data {
 
 ###############################################################################
 #
-# insert_image( $row, $col, $filename, $x, $y, $scale_x, $scale_y )
+# insert_image( $row, $col, $filename, $x, $y, $x_scale, $y_scale )
 #
 # Insert an image into the worksheet.
 #
@@ -4899,14 +5167,14 @@ sub insert_image {
     my $image    = $_[2];
     my $x_offset = $_[3] || 0;
     my $y_offset = $_[4] || 0;
-    my $scale_x  = $_[5] || 1;
-    my $scale_y  = $_[6] || 1;
+    my $x_scale  = $_[5] || 1;
+    my $y_scale  = $_[6] || 1;
 
     croak "Insufficient arguments in insert_image()" unless @_ >= 3;
     croak "Couldn't locate $image: $!" unless -e $image;
 
     push @{ $self->{_images} },
-      [ $row, $col, $image, $x_offset, $y_offset, $scale_x, $scale_y ];
+      [ $row, $col, $image, $x_offset, $y_offset, $x_scale, $y_scale ];
 }
 
 
@@ -4929,11 +5197,11 @@ sub _prepare_image {
     my $drawing_type = 2;
     my $drawing;
 
-    my ( $row, $col, $image, $x_offset, $y_offset, $scale_x, $scale_y ) =
+    my ( $row, $col, $image, $x_offset, $y_offset, $x_scale, $y_scale ) =
       @{ $self->{_images}->[$index] };
 
-    $width  *= $scale_x;
-    $height *= $scale_y;
+    $width  *= $x_scale;
+    $height *= $y_scale;
 
     my @dimensions =
       $self->_position_object_emus( $col, $row, $x_offset, $y_offset, $width,
@@ -4969,7 +5237,7 @@ sub _prepare_image {
 
 ###############################################################################
 #
-# insert_shape( $row, $col, $shape, $x, $y, $scale_x, $scale_y )
+# insert_shape( $row, $col, $shape, $x, $y, $x_scale, $y_scale )
 #
 # Insert a shape into the worksheet.
 #
@@ -5250,18 +5518,19 @@ sub _validate_shape {
 
 ###############################################################################
 #
-# _prepare_comments()
+# _prepare_vml_objects()
 #
 # Turn the HoH that stores the comments into an array for easier handling
-# and set the external links.
+# and set the external links for comments and buttons.
 #
-sub _prepare_comments {
+sub _prepare_vml_objects {
 
     my $self         = shift;
     my $vml_data_id  = shift;
     my $vml_shape_id = shift;
     my $comment_id   = shift;
     my @comments;
+
 
     # We sort the comments by row and column but that isn't strictly required.
     my @rows = sort { $a <=> $b } keys %{ $self->{_comments} };
@@ -5288,13 +5557,18 @@ sub _prepare_comments {
         }
     }
 
-    $self->{_comments_array} = \@comments;
 
     push @{ $self->{_external_vml_links} },
       [ '/vmlDrawing', '../drawings/vmlDrawing' . $comment_id . '.vml' ];
 
-    push @{ $self->{_external_comment_links} },
-      [ '/comments', '../comments' . $comment_id . '.xml' ];
+
+    if ( $self->{_has_comments} ) {
+
+        $self->{_comments_array} = \@comments;
+
+        push @{ $self->{_external_comment_links} },
+          [ '/comments', '../comments' . $comment_id . '.xml' ];
+    }
 
     my $count         = scalar @comments;
     my $start_data_id = $vml_data_id;
@@ -5474,6 +5748,84 @@ sub _comment_params {
 
 ###############################################################################
 #
+# _button_params()
+#
+# This method handles the parameters passed to insert_button() as well as
+# calculating the comment object position and vertices.
+#
+sub _button_params {
+
+    my $self = shift;
+    my $row    = shift;
+    my $col    = shift;
+    my $params = shift;
+    my $button = { _row => $row, _col => $col };
+
+    my $button_number = 1 + @{ $self->{_buttons_array} };
+
+    # Set the button caption.
+    my $caption = $params->{caption};
+
+    # Set a default caption if none was specified by user.
+    if ( !defined $caption ) {
+        $caption = 'Button ' . $button_number;
+    }
+
+    $button->{_font}->{_caption} = $caption;
+
+
+    # Set the macro name.
+    if ( $params->{macro} ) {
+        $button->{_macro} = '[0]!' . $params->{macro};
+    }
+    else {
+        $button->{_macro} = '[0]!Button' . $button_number . '_Click';
+    }
+
+
+    # Ensure that a width and height have been set.
+    my $default_width  = 64;
+    my $default_height = 20;
+    $params->{width}  = $default_width  if !$params->{width};
+    $params->{height} = $default_height if !$params->{height};
+
+    # Set the x/y offsets.
+    $params->{x_offset}  = 0  if !$params->{x_offset};
+    $params->{y_offset}  = 0  if !$params->{y_offset};
+
+    # Scale the size of the comment box if required.
+    if ( $params->{x_scale} ) {
+        $params->{width} = $params->{width} * $params->{x_scale};
+    }
+
+    if ( $params->{y_scale} ) {
+        $params->{height} = $params->{height} * $params->{y_scale};
+    }
+
+    # Round the dimensions to the nearest pixel.
+    $params->{width}  = int( 0.5 + $params->{width} );
+    $params->{height} = int( 0.5 + $params->{height} );
+
+    $params->{start_row} = $row;
+    $params->{start_col} = $col;
+
+    # Calculate the positions of comment object.
+    my @vertices = $self->_position_object_pixels(
+        $params->{start_col}, $params->{start_row}, $params->{x_offset},
+        $params->{y_offset},  $params->{width},     $params->{height}
+    );
+
+    # Add the width and height for VML.
+    push @vertices, ( $params->{width}, $params->{height} );
+
+    $button->{_vertices} = \@vertices;
+
+    return $button;
+}
+
+
+###############################################################################
+#
 # Deprecated methods for backwards compatibility.
 #
 ###############################################################################
@@ -5598,14 +5950,22 @@ sub _write_worksheet {
     my $xmlns                  = $schema . 'spreadsheetml/2006/main';
     my $xmlns_r                = $schema . 'officeDocument/2006/relationships';
     my $xmlns_mc               = $schema . 'markup-compatibility/2006';
-    my $xmlns_mv               = 'urn:schemas-microsoft-com:mac:vml';
-    my $mc_ignorable           = 'mv';
-    my $mc_preserve_attributes = 'mv:*';
 
     my @attributes = (
         'xmlns'   => $xmlns,
         'xmlns:r' => $xmlns_r,
     );
+
+    if ( $self->{_excel_version} == 2010 ) {
+        push @attributes, ( 'xmlns:mc' => $xmlns_mc );
+
+        push @attributes,
+          (     'xmlns:x14ac' => 'http://schemas.microsoft.com/'
+              . 'office/spreadsheetml/2009/9/ac' );
+
+        push @attributes, ( 'mc:Ignorable' => 'x14ac' );
+
+    }
 
     $self->xml_start_tag( 'worksheet', @attributes );
 }
@@ -5625,12 +5985,16 @@ sub _write_sheet_pr {
     if (   !$self->{_fit_page}
         && !$self->{_filter_on}
         && !$self->{_tab_color}
-        && !$self->{_outline_changed} )
+        && !$self->{_outline_changed}
+        && !$self->{_vba_codename} )
     {
         return;
     }
 
-    push @attributes, ( 'filterMode' => 1 ) if $self->{_filter_on};
+
+    my $codename = $self->{_vba_codename};
+    push @attributes, ( 'codeName'   => $codename ) if $codename;
+    push @attributes, ( 'filterMode' => 1 )         if $self->{_filter_on};
 
     if (   $self->{_fit_page}
         || $self->{_tab_color}
@@ -5881,13 +6245,27 @@ sub _write_sheet_format_pr {
 
     my $self               = shift;
     my $base_col_width     = 10;
-    my $default_row_height = 15;
+    my $default_row_height = $self->{_default_row_height};
     my $row_level          = $self->{_outline_row_level};
     my $col_level          = $self->{_outline_col_level};
+    my $zero_height        = $self->{_default_row_zeroed};
 
     my @attributes = ( 'defaultRowHeight' => $default_row_height );
+
+    if ( $self->{_default_row_height} != 15 ) {
+        push @attributes, ( 'customHeight' => 1 );
+    }
+
+    if ( $self->{_default_row_zeroed} ) {
+        push @attributes, ( 'zeroHeight' => 1 );
+    }
+
     push @attributes, ( 'outlineLevelRow' => $row_level ) if $row_level;
     push @attributes, ( 'outlineLevelCol' => $col_level ) if $col_level;
+
+    if ( $self->{_excel_version} == 2010 ) {
+        push @attributes, ( 'x14ac:dyDescent' => '0.25' );
+    }
 
     $self->xml_empty_tag( 'sheetFormatPr', @attributes );
 }
@@ -6028,6 +6406,7 @@ sub _write_optimized_sheet_data {
         $self->xml_empty_tag( 'sheetData' );
     }
     else {
+
         $self->xml_start_tag( 'sheetData' );
 
         my $xlsx_fh = $self->xml_get_fh();
@@ -6101,7 +6480,7 @@ sub _write_rows {
         else {
 
             # Row attributes only.
-            $self->_write_empty_row( $row_num, undef,
+            $self->_write_empty_row( $row_num, $span,
                 @{ $self->{_set_rows}->{$row_num} } );
         }
     }
@@ -6259,7 +6638,7 @@ sub _write_row {
     my $empty_row = shift || 0;
     my $xf_index  = 0;
 
-    $height = 15 if !defined $height;
+    $height = $self->{_default_row_height} if !defined $height;
 
     my @attributes = ( 'r' => $r + 1 );
 
@@ -6277,12 +6656,15 @@ sub _write_row {
     push @attributes, ( 'outlineLevel' => $level )    if $level;
     push @attributes, ( 'collapsed'    => 1 )         if $collapsed;
 
+    if ( $self->{_excel_version} == 2010 ) {
+        push @attributes, ( 'x14ac:dyDescent' => '0.25' );
+    }
 
     if ( $empty_row ) {
-        $self->xml_empty_tag( 'row', @attributes );
+        $self->xml_empty_tag_unencoded( 'row', @attributes );
     }
     else {
-        $self->xml_start_tag( 'row', @attributes );
+        $self->xml_start_tag_unencoded( 'row', @attributes );
     }
 }
 
@@ -6404,8 +6786,7 @@ sub _write_cell {
         {
             push @attributes, ( 't' => 'str' );
             $value =
-              Excel::Writer::XLSX::Package::XMLwriter::_escape_xml_chars(
-                $value );
+              Excel::Writer::XLSX::Package::XMLwriter::_escape_data( $value );
         }
 
 
@@ -6419,36 +6800,6 @@ sub _write_cell {
         $self->_write_cell_array_formula( $token, $cell->[3] );
         $self->_write_cell_value( $cell->[4] );
         $self->xml_end_tag( 'c' );
-    }
-    elsif ( $type eq 'l' ) {
-        my $link_type = $cell->[3];
-
-        # Write the string part a hyperlink.
-        push @attributes, ( 't' => 's' );
-
-        $self->xml_start_tag( 'c', @attributes );
-        $self->_write_cell_value( $token );
-        $self->xml_end_tag( 'c' );
-
-        if ( $link_type == 1 ) {
-
-            # External link with rel file relationship.
-            push @{ $self->{_hlink_refs} },
-              [
-                $link_type,            $row,       $col,
-                ++$self->{_rel_count}, $cell->[5], $cell->[6]
-              ];
-
-            push @{ $self->{_external_hyper_links} },
-              [ '/hyperlink', $cell->[4], 'External' ];
-        }
-        elsif ( $link_type ) {
-
-            # External link with rel file relationship.
-            push @{ $self->{_hlink_refs} },
-              [ $link_type, $row, $col, $cell->[4], $cell->[5], $cell->[6] ];
-        }
-
     }
     elsif ( $type eq 'b' ) {
 
@@ -6628,69 +6979,12 @@ sub _write_page_setup {
         push @attributes, ( 'orientation' => 'portrait' );
     }
 
+    # Set start page.
+    if ( $self->{_page_start} != 0 ) {
+        push @attributes, ( 'useFirstPageNumber' => $self->{_page_start} );
+    }
 
     $self->xml_empty_tag( 'pageSetup', @attributes );
-}
-
-
-##############################################################################
-#
-# _write_ext_lst()
-#
-# Write the <extLst> element.
-#
-sub _write_ext_lst {
-
-    my $self = shift;
-
-    $self->xml_start_tag( 'extLst' );
-    $self->_write_ext();
-    $self->xml_end_tag( 'extLst' );
-}
-
-
-###############################################################################
-#
-# _write_ext()
-#
-# Write the <ext> element.
-#
-sub _write_ext {
-
-    my $self    = shift;
-    my $xmlnsmx = 'http://schemas.microsoft.com/office/mac/excel/2008/main';
-    my $uri     = 'http://schemas.microsoft.com/office/mac/excel/2008/main';
-
-    my @attributes = (
-        'xmlns:mx' => $xmlnsmx,
-        'uri'      => $uri,
-    );
-
-    $self->xml_start_tag( 'ext', @attributes );
-    $self->_write_mx_plv();
-    $self->xml_end_tag( 'ext' );
-}
-
-###############################################################################
-#
-# _write_mx_plv()
-#
-# Write the <mx:PLV> element.
-#
-sub _write_mx_plv {
-
-    my $self     = shift;
-    my $mode     = 1;
-    my $one_page = 0;
-    my $w_scale  = 0;
-
-    my @attributes = (
-        'Mode'    => $mode,
-        'OnePage' => $one_page,
-        'WScale'  => $w_scale,
-    );
-
-    $self->xml_empty_tag( 'mx:PLV', @attributes );
 }
 
 
@@ -7145,16 +7439,75 @@ sub _write_custom_filter {
 #
 # _write_hyperlinks()
 #
-# Write the <hyperlinks> element. The attributes are different for internal
-# and external links.
+# Process any stored hyperlinks in row/col order and write the <hyperlinks>
+# element. The attributes are different for internal and external links.
 #
 sub _write_hyperlinks {
 
-    my $self       = shift;
-    my @hlink_refs = @{ $self->{_hlink_refs} };
+    my $self = shift;
+    my @hlink_refs;
 
-    return unless @hlink_refs;
+    # Sort the hyperlinks into row order.
+    my @row_nums = sort { $a <=> $b } keys %{ $self->{_hyperlinks} };
 
+    # Exit if there are no hyperlinks to process.
+    return if !@row_nums;
+
+    # Iterate over the rows.
+    for my $row_num ( @row_nums ) {
+
+        # Sort the hyperlinks into column order.
+        my @col_nums = sort { $a <=> $b }
+          keys %{ $self->{_hyperlinks}->{$row_num} };
+
+        # Iterate over the columns.
+        for my $col_num ( @col_nums ) {
+
+            # Get the link data for this cell.
+            my $link      = $self->{_hyperlinks}->{$row_num}->{$col_num};
+            my $link_type = $link->{_link_type};
+
+
+            # If the cell isn't a string then we have to add the url as
+            # the string to display.
+            my $display;
+            if (   $self->{_table}
+                && $self->{_table}->{$row_num}
+                && $self->{_table}->{$row_num}->{$col_num} )
+            {
+                my $cell = $self->{_table}->{$row_num}->{$col_num};
+                $display = $link->{_url} if $cell->[0] ne 's';
+            }
+
+
+            if ( $link_type == 1 ) {
+
+                # External link with rel file relationship.
+                push @hlink_refs,
+                  [
+                    $link_type,    $row_num,
+                    $col_num,      ++$self->{_rel_count},
+                    $link->{_str}, $display,
+                    $link->{_tip}
+                  ];
+
+                # Links for use by the packager.
+                push @{ $self->{_external_hyper_links} },
+                  [ '/hyperlink', $link->{_url}, 'External' ];
+            }
+            else {
+
+                # Internal link with rel file relationship.
+                push @hlink_refs,
+                  [
+                    $link_type,    $row_num,      $col_num,
+                    $link->{_url}, $link->{_str}, $link->{_tip}
+                  ];
+            }
+        }
+    }
+
+    # Write the hyperlink elements.
     $self->xml_start_tag( 'hyperlinks' );
 
     for my $aref ( @hlink_refs ) {
@@ -7185,6 +7538,7 @@ sub _write_hyperlink_external {
     my $col      = shift;
     my $id       = shift;
     my $location = shift;
+    my $display  = shift;
     my $tooltip  = shift;
 
     my $ref = xl_rowcol_to_cell( $row, $col );
@@ -7196,6 +7550,7 @@ sub _write_hyperlink_external {
     );
 
     push @attributes, ( 'location' => $location ) if defined $location;
+    push @attributes, ( 'display' => $display )   if defined $display;
     push @attributes, ( 'tooltip'  => $tooltip )  if defined $tooltip;
 
     $self->xml_empty_tag( 'hyperlink', @attributes );
@@ -7574,7 +7929,7 @@ sub _write_legacy_drawing {
     my $self = shift;
     my $id;
 
-    return unless $self->{_has_comments};
+    return unless $self->{_has_vml};
 
     # Increment the relationship id for any drawings or comments.
     $id = ++$self->{_rel_count};
@@ -7631,11 +7986,13 @@ sub _write_font {
         $self->_write_rstring_color( 'theme' => 1 );
     }
 
-    $self->{_rstring}->xml_empty_tag( 'rFont',  'val', $format->{_font} );
-    $self->{_rstring}->xml_empty_tag( 'family', 'val', $format->{_font_family} );
+    $self->{_rstring}->xml_empty_tag( 'rFont', 'val', $format->{_font} );
+    $self->{_rstring}
+      ->xml_empty_tag( 'family', 'val', $format->{_font_family} );
 
     if ( $format->{_font} eq 'Calibri' && !$format->{_hyperlink} ) {
-        $self->{_rstring}->xml_empty_tag( 'scheme', 'val', $format->{_font_scheme} );
+        $self->{_rstring}
+          ->xml_empty_tag( 'scheme', 'val', $format->{_font_scheme} );
     }
 
     $self->{_rstring}->xml_end_tag( 'rPr' );
@@ -8188,6 +8545,363 @@ sub _write_table_part {
 }
 
 
+##############################################################################
+#
+# _write_ext_sparklines()
+#
+# Write the <extLst> element and sparkline subelements.
+#
+sub _write_ext_sparklines {
+
+    my $self       = shift;
+    my @sparklines = @{ $self->{_sparklines} };
+    my $count      = scalar @sparklines;
+
+    # Return if worksheet doesn't contain any sparklines.
+    return unless $count;
+
+
+    # Write the extLst element.
+    $self->xml_start_tag( 'extLst' );
+
+    # Write the ext element.
+    $self->_write_ext();
+
+    # Write the x14:sparklineGroups element.
+    $self->_write_sparkline_groups();
+
+    # Write the sparkline elements.
+    for my $sparkline ( reverse @sparklines ) {
+
+        # Write the x14:sparklineGroup element.
+        $self->_write_sparkline_group( $sparkline );
+
+        # Write the x14:colorSeries element.
+        $self->_write_color_series( $sparkline->{_series_color} );
+
+        # Write the x14:colorNegative element.
+        $self->_write_color_negative( $sparkline->{_negative_color} );
+
+        # Write the x14:colorAxis element.
+        $self->_write_color_axis();
+
+        # Write the x14:colorMarkers element.
+        $self->_write_color_markers( $sparkline->{_markers_color} );
+
+        # Write the x14:colorFirst element.
+        $self->_write_color_first( $sparkline->{_first_color} );
+
+        # Write the x14:colorLast element.
+        $self->_write_color_last( $sparkline->{_last_color} );
+
+        # Write the x14:colorHigh element.
+        $self->_write_color_high( $sparkline->{_high_color} );
+
+        # Write the x14:colorLow element.
+        $self->_write_color_low( $sparkline->{_low_color} );
+
+        if ( $sparkline->{_date_axis} ) {
+            $self->xml_data_element( 'xm:f', $sparkline->{_date_axis} );
+        }
+
+        $self->_write_sparklines( $sparkline );
+
+        $self->xml_end_tag( 'x14:sparklineGroup' );
+    }
+
+
+    $self->xml_end_tag( 'x14:sparklineGroups' );
+    $self->xml_end_tag( 'ext' );
+    $self->xml_end_tag( 'extLst' );
+}
+
+
+##############################################################################
+#
+# _write_sparklines()
+#
+# Write the <x14:sparklines> element and <x14:sparkline> subelements.
+#
+sub _write_sparklines {
+
+    my $self      = shift;
+    my $sparkline = shift;
+
+    # Write the sparkline elements.
+    $self->xml_start_tag( 'x14:sparklines' );
+
+    for my $i ( 0 .. $sparkline->{_count} - 1 ) {
+        my $range    = $sparkline->{_ranges}->[$i];
+        my $location = $sparkline->{_locations}->[$i];
+
+        $self->xml_start_tag( 'x14:sparkline' );
+        $self->xml_data_element( 'xm:f',     $range );
+        $self->xml_data_element( 'xm:sqref', $location );
+        $self->xml_end_tag( 'x14:sparkline' );
+    }
+
+
+    $self->xml_end_tag( 'x14:sparklines' );
+}
+
+
+##############################################################################
+#
+# _write_ext()
+#
+# Write the <ext> element.
+#
+sub _write_ext {
+
+    my $self       = shift;
+    my $schema     = 'http://schemas.microsoft.com/office/';
+    my $xmlns_x_14 = $schema . 'spreadsheetml/2009/9/main';
+    my $uri        = '{05C60535-1F16-4fd2-B633-F4F36F0B64E0}';
+
+    my @attributes = (
+        'xmlns:x14' => $xmlns_x_14,
+        'uri'       => $uri,
+    );
+
+    $self->xml_start_tag( 'ext', @attributes );
+}
+
+
+##############################################################################
+#
+# _write_sparkline_groups()
+#
+# Write the <x14:sparklineGroups> element.
+#
+sub _write_sparkline_groups {
+
+    my $self     = shift;
+    my $xmlns_xm = 'http://schemas.microsoft.com/office/excel/2006/main';
+
+    my @attributes = ( 'xmlns:xm' => $xmlns_xm );
+
+    $self->xml_start_tag( 'x14:sparklineGroups', @attributes );
+
+}
+
+
+##############################################################################
+#
+# _write_sparkline_group()
+#
+# Write the <x14:sparklineGroup> element.
+#
+# Example for order.
+#
+# <x14:sparklineGroup
+#     manualMax="0"
+#     manualMin="0"
+#     lineWeight="2.25"
+#     type="column"
+#     dateAxis="1"
+#     displayEmptyCellsAs="span"
+#     markers="1"
+#     high="1"
+#     low="1"
+#     first="1"
+#     last="1"
+#     negative="1"
+#     displayXAxis="1"
+#     displayHidden="1"
+#     minAxisType="custom"
+#     maxAxisType="custom"
+#     rightToLeft="1">
+#
+sub _write_sparkline_group {
+
+    my $self     = shift;
+    my $opts     = shift;
+    my $empty    = $opts->{_empty};
+    my $user_max = 0;
+    my $user_min = 0;
+    my @a;
+
+    if ( defined $opts->{_max} ) {
+
+        if ( $opts->{_max} eq 'group' ) {
+            $opts->{_cust_max} = 'group';
+        }
+        else {
+            push @a, ( 'manualMax' => $opts->{_max} );
+            $opts->{_cust_max} = 'custom';
+        }
+    }
+
+    if ( defined $opts->{_min} ) {
+
+        if ( $opts->{_min} eq 'group' ) {
+            $opts->{_cust_min} = 'group';
+        }
+        else {
+            push @a, ( 'manualMin' => $opts->{_min} );
+            $opts->{_cust_min} = 'custom';
+        }
+    }
+
+
+    # Ignore the default type attribute (line).
+    if ( $opts->{_type} ne 'line' ) {
+        push @a, ( 'type' => $opts->{_type} );
+    }
+
+    push @a, ( 'lineWeight' => $opts->{_weight} ) if $opts->{_weight};
+    push @a, ( 'dateAxis' => 1 ) if $opts->{_date_axis};
+    push @a, ( 'displayEmptyCellsAs' => $empty ) if $empty;
+
+    push @a, ( 'markers'       => 1 )                  if $opts->{_markers};
+    push @a, ( 'high'          => 1 )                  if $opts->{_high};
+    push @a, ( 'low'           => 1 )                  if $opts->{_low};
+    push @a, ( 'first'         => 1 )                  if $opts->{_first};
+    push @a, ( 'last'          => 1 )                  if $opts->{_last};
+    push @a, ( 'negative'      => 1 )                  if $opts->{_negative};
+    push @a, ( 'displayXAxis'  => 1 )                  if $opts->{_axis};
+    push @a, ( 'displayHidden' => 1 )                  if $opts->{_hidden};
+    push @a, ( 'minAxisType'   => $opts->{_cust_min} ) if $opts->{_cust_min};
+    push @a, ( 'maxAxisType'   => $opts->{_cust_max} ) if $opts->{_cust_max};
+    push @a, ( 'rightToLeft'   => 1 )                  if $opts->{_reverse};
+
+    $self->xml_start_tag( 'x14:sparklineGroup', @a );
+}
+
+
+##############################################################################
+#
+# _write_spark_color()
+#
+# Helper function for the sparkline color functions below.
+#
+sub _write_spark_color {
+
+    my $self    = shift;
+    my $element = shift;
+    my $color   = shift;
+    my @attr;
+
+    push @attr, ( 'rgb'   => $color->{_rgb} )   if defined $color->{_rgb};
+    push @attr, ( 'theme' => $color->{_theme} ) if defined $color->{_theme};
+    push @attr, ( 'tint'  => $color->{_tint} )  if defined $color->{_tint};
+
+    $self->xml_empty_tag( $element, @attr );
+}
+
+
+##############################################################################
+#
+# _write_color_series()
+#
+# Write the <x14:colorSeries> element.
+#
+sub _write_color_series {
+
+    my $self = shift;
+
+    $self->_write_spark_color( 'x14:colorSeries', @_ );
+}
+
+
+##############################################################################
+#
+# _write_color_negative()
+#
+# Write the <x14:colorNegative> element.
+#
+sub _write_color_negative {
+
+    my $self = shift;
+
+    $self->_write_spark_color( 'x14:colorNegative', @_ );
+}
+
+
+##############################################################################
+#
+# _write_color_axis()
+#
+# Write the <x14:colorAxis> element.
+#
+sub _write_color_axis {
+
+    my $self = shift;
+
+    $self->_write_spark_color( 'x14:colorAxis', { _rgb => 'FF000000' } );
+}
+
+
+##############################################################################
+#
+# _write_color_markers()
+#
+# Write the <x14:colorMarkers> element.
+#
+sub _write_color_markers {
+
+    my $self = shift;
+
+    $self->_write_spark_color( 'x14:colorMarkers', @_ );
+}
+
+
+##############################################################################
+#
+# _write_color_first()
+#
+# Write the <x14:colorFirst> element.
+#
+sub _write_color_first {
+
+    my $self = shift;
+
+    $self->_write_spark_color( 'x14:colorFirst', @_ );
+}
+
+
+##############################################################################
+#
+# _write_color_last()
+#
+# Write the <x14:colorLast> element.
+#
+sub _write_color_last {
+
+    my $self = shift;
+
+    $self->_write_spark_color( 'x14:colorLast', @_ );
+}
+
+
+##############################################################################
+#
+# _write_color_high()
+#
+# Write the <x14:colorHigh> element.
+#
+sub _write_color_high {
+
+    my $self = shift;
+
+    $self->_write_spark_color( 'x14:colorHigh', @_ );
+}
+
+
+##############################################################################
+#
+# _write_color_low()
+#
+# Write the <x14:colorLow> element.
+#
+sub _write_color_low {
+
+    my $self = shift;
+
+    $self->_write_spark_color( 'x14:colorLow', @_ );
+}
+
+
 1;
 
 
@@ -8212,6 +8926,6 @@ John McNamara jmcnamara@cpan.org
 
 =head1 COPYRIGHT
 
-� MM-MMXII, John McNamara.
+(c) MM-MMXIII, John McNamara.
 
 All Rights Reserved. This module is free software. It may be used, redistributed and/or modified under the same terms as Perl itself.

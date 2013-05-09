@@ -7,7 +7,7 @@ package Excel::Writer::XLSX::Package::ContentTypes;
 #
 # Used in conjunction with Excel::Writer::XLSX
 #
-# Copyright 2000-2012, John McNamara, jmcnamara@cpan.org
+# Copyright 2000-2013, John McNamara, jmcnamara@cpan.org
 #
 # Documentation after __END__
 #
@@ -21,7 +21,7 @@ use Carp;
 use Excel::Writer::XLSX::Package::XMLwriter;
 
 our @ISA     = qw(Excel::Writer::XLSX::Package::XMLwriter);
-our $VERSION = '0.53';
+our $VERSION = '0.67';
 
 
 ###############################################################################
@@ -298,6 +298,27 @@ sub _add_table_name {
 
 ###############################################################################
 #
+# _add_vba_project()
+#
+# Add a vbaProject to the ContentTypes defaults.
+#
+sub _add_vba_project {
+
+    my $self = shift;
+
+    # Change the workbook.xml content-type from xlsx to xlsm.
+    for my $aref ( @{ $self->{_overrides} } ) {
+        if ( $aref->[0] eq '/xl/workbook.xml' ) {
+            $aref->[1] = 'application/vnd.ms-excel.sheet.macroEnabled.main+xml';
+        }
+    }
+
+    $self->_add_default( 'bin', 'application/vnd.ms-office.vbaProject' );
+}
+
+
+###############################################################################
+#
 # Internal methods.
 #
 ###############################################################################
@@ -436,7 +457,7 @@ John McNamara jmcnamara@cpan.org
 
 =head1 COPYRIGHT
 
-© MM-MMXII, John McNamara.
+(c) MM-MMXIII, John McNamara.
 
 All Rights Reserved. This module is free software. It may be used, redistributed and/or modified under the same terms as Perl itself.
 

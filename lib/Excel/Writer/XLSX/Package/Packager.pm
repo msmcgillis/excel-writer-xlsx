@@ -6,7 +6,7 @@ package Excel::Writer::XLSX::Package::Packager;
 #
 # Used in conjunction with Excel::Writer::XLSX
 #
-# Copyright 2000-2012, John McNamara, jmcnamara@cpan.org
+# Copyright 2000-2013, John McNamara, jmcnamara@cpan.org
 #
 # Documentation after __END__
 #
@@ -31,7 +31,7 @@ use Excel::Writer::XLSX::Package::Theme;
 use Excel::Writer::XLSX::Package::VML;
 
 our @ISA     = qw(Exporter);
-our $VERSION = '0.53';
+our $VERSION = '0.67';
 
 
 ###############################################################################
@@ -100,6 +100,7 @@ sub _add_workbook {
     $self->{_sheet_names}       = \@sheet_names;
     $self->{_chart_count}       = scalar @{ $workbook->{_charts} };
     $self->{_drawing_count}     = scalar @{ $workbook->{_drawings} };
+    $self->{_num_vml_files}     = $workbook->{_num_vml_files};
     $self->{_num_comment_files} = $workbook->{_num_comment_files};
     $self->{_named_ranges}      = $workbook->{_named_ranges};
 
@@ -144,6 +145,7 @@ sub _create_package {
     $self->_write_chartsheet_rels_files();
     $self->_write_drawing_rels_files();
     $self->_add_image_files();
+    $self->_add_vba_project();
 }
 
 
@@ -282,7 +284,7 @@ sub _write_vml_files {
 
     my $index = 1;
     for my $worksheet ( @{ $self->{_workbook}->{_worksheets} } ) {
-        next unless $worksheet->{_has_comments};
+        next unless $worksheet->{_has_vml};
 
         my $vml = Excel::Writer::XLSX::Package::VML->new();
 
@@ -294,7 +296,8 @@ sub _write_vml_files {
         $vml->_assemble_xml_file(
             $worksheet->{_vml_data_id},
             $worksheet->{_vml_shape_id},
-            $worksheet->{_comments_array}
+            $worksheet->{_comments_array},
+            $worksheet->{_buttons_array},
         );
     }
 }
@@ -459,7 +462,7 @@ sub _write_content_types_file {
         $content->_add_drawing_name( 'drawing' . $i );
     }
 
-    if ( $self->{_num_comment_files} ) {
+    if ( $self->{_num_vml_files} ) {
         $content->_add_vml_name();
     }
 
@@ -474,6 +477,11 @@ sub _write_content_types_file {
     # Add the sharedString rel if there is string data in the workbook.
     if ( $self->{_workbook}->{_str_total} ) {
         $content->_add_shared_strings();
+    }
+
+    # Add vbaProject if present.
+    if ( $self->{_workbook}->{_vba_project} ) {
+        $content->_add_vba_project();
     }
 
     $content->_set_xml_writer( $dir . '/[Content_Types].xml' );
@@ -594,7 +602,7 @@ sub _write_root_rels_file {
 
     $rels->_add_document_relationship( '/officeDocument', 'xl/workbook.xml' );
     $rels->_add_package_relationship( '/metadata/core-properties',
-        'docProps/core' );
+        'docProps/core.xml' );
     $rels->_add_document_relationship( '/extended-properties',
         'docProps/app.xml' );
 
@@ -639,6 +647,11 @@ sub _write_workbook_rels_file {
     if ( $self->{_workbook}->{_str_total} ) {
         $rels->_add_document_relationship( '/sharedStrings',
             'sharedStrings.xml' );
+    }
+
+    # Add vbaProject if present.
+    if ( $self->{_workbook}->{_vba_project} ) {
+        $rels->_add_ms_package_relationship( '/vbaProject', 'vbaProject.bin' );
     }
 
     $rels->_set_xml_writer( $dir . '/xl/_rels/workbook.xml.rels' );
@@ -776,7 +789,7 @@ sub _write_drawing_rels_files {
 #
 # _add_image_files()
 #
-# Write the workbook.xml file.
+# Write the /xl/media/image?.xml files.
 #
 sub _add_image_files {
 
@@ -794,6 +807,26 @@ sub _add_image_files {
 
         copy( $filename, $dir . '/xl/media/image' . $index++ . $extension );
     }
+}
+
+
+###############################################################################
+#
+# _add_vba_project()
+#
+# Write the vbaProject.bin file.
+#
+sub _add_vba_project {
+
+    my $self        = shift;
+    my $dir         = $self->{_package_dir};
+    my $vba_project = $self->{_workbook}->{_vba_project};
+
+    return unless $vba_project;
+
+    _mkdir( $dir . '/xl' );
+
+    copy( $vba_project, $dir . '/xl/vbaProject.bin' );
 }
 
 
@@ -871,7 +904,7 @@ John McNamara jmcnamara@cpan.org
 
 =head1 COPYRIGHT
 
-© MM-MMXII, John McNamara.
+(c) MM-MMXIII, John McNamara.
 
 All Rights Reserved. This module is free software. It may be used, redistributed and/or modified under the same terms as Perl itself.
 

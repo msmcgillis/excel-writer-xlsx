@@ -2190,7 +2190,8 @@ sub _write_cat_axis {
     $self->_write_tick_label_pos( $x_axis->{_label_position} );
 
     # Write the axis font elements.
-    $self->_write_axis_font( $x_axis->{_num_font} );
+    $self->_write_axis_font( $x_axis->{_num_font},
+                             $x_axis->{_num_rotation} );
 
     # Write the c:crossAx element.
     $self->_write_cross_axis( $axis_ids->[1] );
@@ -2224,10 +2225,6 @@ sub _write_cat_axis {
 
     # Write the c:auto element.
     $self->_write_tick_mark_skip( $x_axis->{_tick_mark_skip} );
-
-    # Write the c:txPr element.
-    $self->_write_tx_pr( undef, $x_axis->{_font}, undef,
-                         $x_axis->{_num_rotation} );
 
     $self->xml_end_tag( 'c:catAx' );
 }
@@ -2292,7 +2289,8 @@ sub _write_val_axis {
     $self->_write_tick_label_pos( $y_axis->{_label_position} );
 
     # Write the axis font elements.
-    $self->_write_axis_font( $y_axis->{_num_font} );
+    $self->_write_axis_font( $y_axis->{_num_font},
+                             $y_axis->{_num_rotation} );
 
     # Write the c:crossAx element.
     $self->_write_cross_axis( $axis_ids->[0] );
@@ -2317,10 +2315,6 @@ sub _write_val_axis {
 
     # Write the c:minorUnit element.
     $self->_write_c_minor_unit( $y_axis->{_minor_unit} );
-
-    # Write the c:txPr element.
-    $self->_write_tx_pr( undef, $y_axis->{_font}, undef,
-                         $y_axis->{_num_rotation} );
 
     $self->xml_end_tag( 'c:valAx' );
 }
@@ -2384,7 +2378,8 @@ sub _write_cat_val_axis {
     $self->_write_tick_label_pos( $x_axis->{_label_position} );
 
     # Write the axis font elements.
-    $self->_write_axis_font( $x_axis->{_num_font} );
+    $self->_write_axis_font( $x_axis->{_num_font},
+                             $x_axis->{_num_rotation} );
 
     # Write the c:crossAx element.
     $self->_write_cross_axis( $axis_ids->[1] );
@@ -2409,10 +2404,6 @@ sub _write_cat_val_axis {
 
     # Write the c:minorUnit element.
     $self->_write_c_minor_unit( $x_axis->{_minor_unit} );
-
-    # Write the c:txPr element.
-    $self->_write_tx_pr( undef, $x_axis->{_font}, undef,
-                         $x_axis->{_num_rotation} );
 
     $self->xml_end_tag( 'c:valAx' );
 }
@@ -2475,7 +2466,8 @@ sub _write_date_axis {
     $self->_write_tick_label_pos( $x_axis->{_label_position} );
 
     # Write the axis font elements.
-    $self->_write_axis_font( $x_axis->{_num_font} );
+    $self->_write_axis_font( $x_axis->{_num_font},
+                             $x_axis->{_num_rotation} );
 
     # Write the c:crossAx element.
     $self->_write_cross_axis( $axis_ids->[1] );
@@ -2516,10 +2508,6 @@ sub _write_date_axis {
     if ( defined $x_axis->{_minor_unit} ) {
         $self->_write_c_minor_time_unit( $x_axis->{_minor_unit_type} );
     }
-
-    # Write the c:txPr element.
-    $self->_write_tx_pr( undef, $x_axis->{_font}, undef,
-                         $x_axis->{_num_rotation} );
 
     $self->xml_end_tag( 'c:dateAx' );
 }
@@ -4558,11 +4546,12 @@ sub _write_axis_font {
 
     my $self = shift;
     my $font = shift;
+    my $rotation = shift;
 
-    return unless $font;
+    return unless $font || $rotation;
 
     $self->xml_start_tag( 'c:txPr' );
-    $self->xml_empty_tag( 'a:bodyPr' );
+    $self->_write_a_body_pr( undef, $rotation );
     $self->_write_a_lst_style();
     $self->xml_start_tag( 'a:p' );
 

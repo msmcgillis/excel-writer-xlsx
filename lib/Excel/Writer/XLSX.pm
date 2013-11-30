@@ -18,7 +18,7 @@ use strict;
 use Excel::Writer::XLSX::Workbook;
 
 our @ISA     = qw(Excel::Writer::XLSX::Workbook Exporter);
-our $VERSION = '0.67';
+our $VERSION = '0.74';
 
 
 ###############################################################################
@@ -50,7 +50,7 @@ Excel::Writer::XLSX - Create a new file in the Excel 2007+ XLSX format.
 
 =head1 VERSION
 
-This document refers to version 0.67 of Excel::Writer::XLSX, released May 6, 2013.
+This document refers to version 0.74 of Excel::Writer::XLSX, released November 17, 2013.
 
 
 
@@ -465,6 +465,8 @@ If the sheet name contains spaces or special characters you must enclose it in s
     $workbook->define_name( "'New Data'!Sales",  '=Sheet2!$G$1:$G$10' );
 
 See the defined_name.pl program in the examples dir of the distro.
+
+Refer to the following to see Excel's syntax rules for defined names: L<http://office.microsoft.com/en-001/excel-help/define-and-use-names-in-formulas-HA010147120.aspx#BMsyntax_rules_for_names>
 
 
 
@@ -1562,8 +1564,6 @@ See the C<write_handler 1-4> programs in the C<examples> directory for further e
 
 
 =head2 insert_image( $row, $col, $filename, $x, $y, $x_scale, $y_scale )
-
-Partially supported. Currently only works for 96 dpi images.
 
 This method can be used to insert a image into a worksheet. The image can be in PNG, JPEG or BMP format. The C<$x>, C<$y>, C<$x_scale> and C<$y_scale> parameters are optional.
 
@@ -4856,7 +4856,7 @@ The C<2_color_scale> type is used to specify Excel's "2 Color Scale" style condi
         }
     );
 
-At the moment only the default colors and properties can be used. These will be extended in time.
+This conditional type can be modified with C<min_type>, C<max_type>, C<min_value>, C<max_value>, C<min_color> and C<max_color>, see below.
 
 
 =head2 type => '3_color_scale'
@@ -4869,7 +4869,8 @@ The C<3_color_scale> type is used to specify Excel's "3 Color Scale" style condi
         }
     );
 
-At the moment only the default colors and properties can be used. These will be extended in time.
+This conditional type can be modified with C<min_type>, C<mid_type>, C<max_type>, C<min_value>, C<mid_value>, C<max_value>, C<min_color>, C<mid_color> and C<max_color>, see below.
+
 
 =head2 type => 'data_bar'
 
@@ -4881,7 +4882,8 @@ The C<data_bar> type is used to specify Excel's "Data Bar" style conditional for
         }
     );
 
-At the moment only the default colors and properties can be used. These will be extended in time.
+This conditional type can be modified with C<min_type>, C<max_type>, C<min_value>, C<max_value> and C<bar_color>, see below.
+
 
 
 =head2 type => 'formula'
@@ -6195,7 +6197,7 @@ It supports all of the features of Spreadsheet::WriteExcel with some minor diffe
     show_comments()             Yes
     set_comments_author()       Yes
     add_write_handler()         Yes
-    insert_image()              Yes/Partial, see docs.
+    insert_image()              Yes.
     insert_chart()              Yes
     insert_shape()              Yes. Not in Spreadsheet::WriteExcel.
     insert_button()             Yes. Not in Spreadsheet::WriteExcel.
@@ -6484,12 +6486,6 @@ For other Perl-Excel modules try the following search: L<http://search.cpan.org/
 
 =over
 
-=item * Zero values for formulas results.
-
-Some versions of Excel 2007 do not display the calculated values of formulas written by Excel::Writer::XLSX. This is a bug in Excel since Excel::Writer::XLSX sets the required flag for recalculating formulas on opening.
-
-Applying all available Service Packs to Excel should fix this. Alternatively you can supply calculated values for all formulas that you write.
-
 =item * Memory usage is very high for large worksheets.
 
 If you run out of memory creating large worksheets use the C<set_optimization()> method. See L</SPEED AND MEMORY USAGE> for more information.
@@ -6618,6 +6614,6 @@ John McNamara jmcnamara@cpan.org
 
 =head1 COPYRIGHT
 
-Copyright MM-MMXIII, John McNamara.
+Copyright MM-MMXIIII, John McNamara.
 
 All Rights Reserved. This module is free software. It may be used, redistributed and/or modified under the same terms as Perl itself.

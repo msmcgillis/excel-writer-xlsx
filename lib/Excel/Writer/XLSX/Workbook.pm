@@ -33,7 +33,7 @@ use Excel::Writer::XLSX::Package::XMLwriter;
 use Excel::Writer::XLSX::Utility qw(xl_cell_to_rowcol xl_rowcol_to_cell);
 
 our @ISA     = qw(Excel::Writer::XLSX::Package::XMLwriter);
-our $VERSION = '0.67';
+our $VERSION = '0.74';
 
 
 ###############################################################################
@@ -92,7 +92,6 @@ sub new {
     $self->{_window_width}       = 16095;
     $self->{_window_height}      = 9660;
     $self->{_tab_ratio}          = 500;
-    $self->{_table_count}        = 0;
 
 
     # Structures for the shared strings data.
@@ -313,8 +312,6 @@ sub add_worksheet {
         \$self->{_str_unique},
         \$self->{_str_table},
 
-        \$self->{_table_count},
-
         $self->{_1904},
         $self->{_palette},
         $self->{_optimization},
@@ -371,8 +368,6 @@ sub add_chart {
         \$self->{_str_total},
         \$self->{_str_unique},
         \$self->{_str_table},
-
-        \$self->{_table_count},
 
         $self->{_1904},
         $self->{_palette},
@@ -726,15 +721,21 @@ sub define_name {
         return -1;
     }
 
-    # Warn if the sheet name contains invalid chars as defined by Excel help.
-    if ( $name !~ m/^[a-zA-Z_\\][a-zA-Z_.]+/ ) {
+    # Warn if the name contains invalid chars as defined by Excel help.
+    if ( $name !~ m/^[\w\\][\w.]*$/ || $name =~ m/^\d/ ) {
         carp "Invalid characters in name '$name' used in defined_name()\n";
         return -1;
     }
 
-    # Warn if the sheet name looks like a cell name.
+    # Warn if the name looks like a cell name.
     if ( $name =~ m/^[a-zA-Z][a-zA-Z]?[a-dA-D]?[0-9]+$/ ) {
         carp "Invalid name '$name' looks like a cell name in defined_name()\n";
+        return -1;
+    }
+
+    # Warn if the name looks like a R1C1.
+    if ( $name =~ m/^[rcRC]$/ || $name =~ m/^[rcRC]\d+[rcRC]\d+$/ ) {
+        carp "Invalid name '$name' like a RC cell ref in defined_name()\n";
         return -1;
     }
 
@@ -853,6 +854,9 @@ sub _store_workbook {
 
     # Add cached data to charts.
     $self->_add_chart_data();
+
+    # Prepare the worksheet tables.
+    $self->_prepare_tables();
 
     # Package the workbook.
     $packager->_add_workbook( $self );
@@ -1491,22 +1495,25 @@ sub _prepare_drawings {
 #
 sub _prepare_vml_objects {
 
-    my $self          = shift;
-    my $comment_id    = 0;
-    my $vml_data_id   = 1;
-    my $vml_shape_id  = 1024;
-    my $vml_files     = 0;
-    my $comment_files = 0;
+    my $self           = shift;
+    my $comment_id     = 0;
+    my $vml_drawing_id = 0;
+    my $vml_data_id    = 1;
+    my $vml_shape_id   = 1024;
+    my $vml_files      = 0;
+    my $comment_files  = 0;
 
     for my $sheet ( @{ $self->{_worksheets} } ) {
 
         next unless $sheet->{_has_vml};
         $vml_files++;
         $comment_files++ if $sheet->{_has_comments};
+        $comment_id++    if $sheet->{_has_comments};
+        $vml_drawing_id++;
 
-
-        my $count = $sheet->_prepare_vml_objects( $vml_data_id, $vml_shape_id,
-            ++$comment_id );
+        my $count =
+          $sheet->_prepare_vml_objects( $vml_data_id, $vml_shape_id,
+            $vml_drawing_id, $comment_id );
 
         # Each VML file should start with a shape id incremented by 1024.
         $vml_data_id  += 1 * int(    ( 1024 + $count ) / 1024 );
@@ -1530,6 +1537,30 @@ sub _prepare_vml_objects {
         $format->get_xf_index();
 
         push @{ $self->{_formats} }, $format;
+    }
+}
+
+
+###############################################################################
+#
+# _prepare_tables()
+#
+# Set the table ids for the worksheet tables.
+#
+sub _prepare_tables {
+
+    my $self     = shift;
+    my $table_id = 0;
+
+    for my $sheet ( @{ $self->{_worksheets} } ) {
+
+        my $table_count = scalar @{ $sheet->{_tables} };
+
+        next unless $table_count;
+
+        $sheet->_prepare_tables( $table_id + 1 );
+
+        $table_id += $table_count;
     }
 }
 
@@ -1761,14 +1792,9 @@ sub _get_image_properties {
             ( $type, $width, $height ) = $self->_process_png( $data );
             $self->{_image_types}->{png} = 1;
         }
-        elsif (
-            ( unpack( 'n', $data ) == 0xFFD8 )
-            && (   ( unpack( 'x6 A4', $data ) eq 'JFIF' )
-                || ( unpack( 'x6 A4', $data ) eq 'Exif' ) )
-          )
-        {
+        elsif ( unpack( 'n', $data ) == 0xFFD8 ) {
 
-            # Test for JFIF and Exif JPEGs.
+            # Test for JPEG files.
             ( $type, $width, $height ) =
               $self->_process_jpg( $data, $filename );
 
@@ -2177,7 +2203,10 @@ sub _write_calc_pr {
     my $calc_id         = 124519;
     my $concurrent_calc = 0;
 
-    my @attributes = ( 'calcId' => $calc_id, );
+    my @attributes = (
+        'calcId'         => $calc_id,
+        'fullCalcOnLoad' => 1
+    );
 
     $self->xml_empty_tag( 'calcPr', @attributes );
 }
@@ -2309,6 +2338,6 @@ John McNamara jmcnamara@cpan.org
 
 =head1 COPYRIGHT
 
-(c) MM-MMXIII, John McNamara.
+(c) MM-MMXIIII, John McNamara.
 
 All Rights Reserved. This module is free software. It may be used, redistributed and/or modified under the same terms as Perl itself.

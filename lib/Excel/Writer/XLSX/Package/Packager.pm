@@ -31,7 +31,7 @@ use Excel::Writer::XLSX::Package::Theme;
 use Excel::Writer::XLSX::Package::VML;
 
 our @ISA     = qw(Exporter);
-our $VERSION = '0.67';
+our $VERSION = '0.74';
 
 
 ###############################################################################
@@ -763,8 +763,12 @@ sub _write_drawing_rels_files {
 
     my $index = 0;
     for my $worksheet ( @{ $self->{_workbook}->{_worksheets} } ) {
+
+        if ( @{ $worksheet->{_drawing_links} } || $worksheet->{_has_shapes} ) {
+            $index++;
+        }
+
         next unless @{ $worksheet->{_drawing_links} };
-        $index++;
 
         # Create the drawing .rels dir.
         _mkdir( $dir . '/xl' );
@@ -904,7 +908,7 @@ John McNamara jmcnamara@cpan.org
 
 =head1 COPYRIGHT
 
-(c) MM-MMXIII, John McNamara.
+(c) MM-MMXIIII, John McNamara.
 
 All Rights Reserved. This module is free software. It may be used, redistributed and/or modified under the same terms as Perl itself.
 

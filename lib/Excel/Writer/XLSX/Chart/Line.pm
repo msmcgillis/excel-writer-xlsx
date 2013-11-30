@@ -22,7 +22,7 @@ use Carp;
 use Excel::Writer::XLSX::Chart;
 
 our @ISA     = qw(Excel::Writer::XLSX::Chart);
-our $VERSION = '0.67';
+our $VERSION = '0.74';
 
 
 ###############################################################################
@@ -36,6 +36,7 @@ sub new {
     my $self  = Excel::Writer::XLSX::Chart->new( @_ );
 
     $self->{_default_marker} = { type => 'none' };
+    $self->{_smooth_allowed} = 1;
 
     bless $self, $class;
     return $self;
@@ -267,7 +268,7 @@ John McNamara jmcnamara@cpan.org
 
 =head1 COPYRIGHT
 
-Copyright MM-MMXIII, John McNamara.
+Copyright MM-MMXIIII, John McNamara.
 
 All Rights Reserved. This module is free software. It may be used, redistributed and/or modified under the same terms as Perl itself.
 

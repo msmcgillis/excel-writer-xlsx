@@ -26,7 +26,7 @@ use Excel::Writer::XLSX::Utility qw(xl_cell_to_rowcol
   xl_range_formula );
 
 our @ISA     = qw(Excel::Writer::XLSX::Package::XMLwriter);
-our $VERSION = '0.67';
+our $VERSION = '0.74';
 
 
 ###############################################################################
@@ -69,7 +69,7 @@ sub new {
     $self->{_subtype}           = shift;
     $self->{_sheet_type}        = 0x0200;
     $self->{_orientation}       = 0x0;
-    $self->{_ser_count}         = 0;    # Tracks the # series added
+    $self->{_series}            = [];
     $self->{_embedded}          = 0;
     $self->{_id}                = '';
     $self->{_series_index}      = 0;
@@ -103,6 +103,8 @@ sub new {
     $self->{_x_offset}          = 0;
     $self->{_y_offset}          = 0;
     $self->{_table}             = undef;
+    $self->{_smooth_allowed}    = 0;
+    $self->{_cross_between}     = 'between';
 
     bless $self, $class;
     $self->_set_default_properties();
@@ -208,6 +210,9 @@ sub add_series {
     # Set the trendline properties for the series.
     my $trendline = $self->_get_trendline_properties( $arg{trendline} );
 
+    # Set the line smooth property for the series.
+    my $smooth = $arg{smooth};
+
     # Set the error bars properties for the series.
     my $y_error_bars = $self->_get_error_bars_properties( $arg{y_error_bars} );
     my $x_error_bars = $self->_get_error_bars_properties( $arg{x_error_bars} );
@@ -249,6 +254,7 @@ sub add_series {
         _fill          => $fill,
         _marker        => $marker,
         _trendline     => $trendline,
+        _smooth        => $smooth,
         _labels        => $labels,
         _invert_if_neg => $invert_if_neg,
         _x2_axis       => $x2_axis,
@@ -348,6 +354,15 @@ sub set_title {
 
     # Set the font properties if present.
     $self->{_title_font} = $self->_convert_font_args( $arg{name_font} );
+
+    # Set the title layout.
+    $self->{_title_layout} = $self->_get_layout_properties( $arg{layout}, 1 );
+
+    # Set the title overlay option.
+    $self->{_title_overlay} = $arg{overlay};
+
+    # Set the no automatic title option.
+    $self->{_title_none} = $arg{none};
 }
 
 
@@ -362,10 +377,17 @@ sub set_legend {
     my $self = shift;
     my %arg  = @_;
 
-    $self->{_legend_position} = $arg{position} || 'right';
+    $self->{_legend_position}      = $arg{position} || 'right';
     $self->{_legend_delete_series} = $arg{delete_series};
-    $self->{_legend_font}     = $self->_convert_font_args( $arg{font} );
-    $self->{_legend_layout}   = $arg{layout} if (exists($arg{layout}));
+    $self->{_legend_font}          = $self->_convert_font_args( $arg{font} );
+
+    # Set the legend layout.
+    $self->{_legend_layout} = $self->_get_layout_properties( $arg{layout} );
+
+    # Turn off the legend.
+    if ( $arg{none} ) {
+        $self->{_legend_position} = 'none';
+    }
 }
 
 
@@ -625,6 +647,7 @@ sub _convert_axis_args {
         _major_unit_type   => $arg{major_unit_type},
         _log_base          => $arg{log_base},
         _crossing          => $arg{crossing},
+        _position_axis     => $arg{position_axis},
         _position          => $arg{position},
         _label_position    => $arg{label_position},
         _num_format        => $arg{num_format},
@@ -652,13 +675,27 @@ sub _convert_axis_args {
         $axis->{_position} = substr lc $axis->{_position}, 0, 1;
     }
 
-    $axis->{_name_rotation} = $arg{name_rotation}
-             if (exists($arg{name_rotation}));
-    $axis->{_num_rotation} = $arg{num_rotation}
-             if (exists($arg{num_rotation}));
+    # Set the position for a category axis on or between the tick marks.
+    if ( defined $axis->{_position_axis} ) {
+        if ( $axis->{_position_axis} eq 'on_tick' ) {
+            $axis->{_position_axis} = 'midCat';
+        }
+        elsif ( $axis->{_position_axis} eq 'between' ) {
+
+            # Doesn't need to be modified.
+        }
+        else {
+            # Otherwise use the default value.
+            $axis->{_position_axis} = undef;
+        }
+    }
+
     # Set the font properties if present.
     $axis->{_num_font}  = $self->_convert_font_args( $arg{num_font} );
     $axis->{_name_font} = $self->_convert_font_args( $arg{name_font} );
+
+    # Set the axis name layout.
+    $axis->{_layout} = $self->_get_layout_properties( $arg{name_layout}, 1 );
 
     return $axis;
 }
@@ -687,10 +724,16 @@ sub _convert_font_args {
         _pitch_family => $args->{pitch_family},
         _charset      => $args->{charset},
         _baseline     => $args->{baseline} || 0,
+        _rotation     => $args->{rotation},
     };
 
     # Convert font size units.
     $font->{_size} *= 100 if $font->{_size};
+
+    # Convert rotation into 60,000ths of a degree.
+    if ( $font->{_rotation} ) {
+        $font->{_rotation} = 60_000 * int( $font->{_rotation} );
+    }
 
     return $font;
 }
@@ -1035,7 +1078,7 @@ sub _get_marker_properties {
         diamond    => 'diamond',
         triangle   => 'triangle',
         x          => 'x',
-        star       => 'start',
+        star       => 'star',
         dot        => 'dot',
         short_dash => 'dot',
         dash       => 'dash',
@@ -1146,10 +1189,14 @@ sub _get_error_bars_properties {
 
     # Default values.
     my $error_bars = {
-        _type      => 'fixedVal',
-        _value     => 1,
-        _endcap    => 1,
-        _direction => 'both'
+        _type         => 'fixedVal',
+        _value        => 1,
+        _endcap       => 1,
+        _direction    => 'both',
+        _plus_values  => [1],
+        _minus_values => [1],
+        _plus_data    => [],
+        _minus_data   => [],
     };
 
     my %types = (
@@ -1157,6 +1204,7 @@ sub _get_error_bars_properties {
         percentage         => 'percentage',
         standard_deviation => 'stdDev',
         standard_error     => 'stdErr',
+        custom             => 'cust',
     );
 
     # Check the error bars type.
@@ -1191,6 +1239,20 @@ sub _get_error_bars_properties {
         else {
             # Default to 'both'.
         }
+    }
+
+    # Set any custom values.
+    if ( defined $args->{plus_values} ) {
+        $error_bars->{_plus_values} = $args->{plus_values};
+    }
+    if ( defined $args->{minus_values} ) {
+        $error_bars->{_minus_values} = $args->{minus_values};
+    }
+    if ( defined $args->{plus_data} ) {
+        $error_bars->{_plus_data} = $args->{plus_data};
+    }
+    if ( defined $args->{minus_data} ) {
+        $error_bars->{_minus_data} = $args->{minus_data};
     }
 
     # Set the line properties for the error bars.
@@ -1319,14 +1381,80 @@ sub _get_area_properties {
     # Set the fill properties for the chartarea.
     my $fill = $self->_get_fill_properties( $arg{fill} );
 
+    # Set the plotarea layout.
+    my $layout = $self->_get_layout_properties( $arg{layout} );
 
-    $area->{_line} = $line;
-    $area->{_fill} = $fill;
+    $area->{_line}   = $line;
+    $area->{_fill}   = $fill;
+    $area->{_layout} = $layout;
 
     return $area;
 }
 
 
+###############################################################################
+#
+# _get_layout_properties()
+#
+# Convert user defined layout properties to the format required internally.
+#
+sub _get_layout_properties {
+
+    my $self    = shift;
+    my $args    = shift;
+    my $is_text = shift;
+    my $layout  = {};
+    my @properties;
+    my %allowable;
+
+    return if !$args;
+
+    if ( $is_text ) {
+        @properties = ( 'x', 'y' );
+    }
+    else {
+        @properties = ( 'x', 'y', 'width', 'height' );
+    }
+
+    # Check for valid properties.
+    @allowable{@properties} = undef;
+
+    for my $key ( keys %$args ) {
+
+        if ( !exists $allowable{$key} ) {
+            warn "Property '$key' not allowed in layout options\n";
+            return;
+        }
+    }
+
+    # Set the layout properties.
+    for my $property ( @properties ) {
+
+        if ( !exists $args->{$property} ) {
+            warn "Property '$property' must be specified in layout options\n";
+            return;
+        }
+
+        my $value = $args->{$property};
+
+        if ( $value !~ /^([+-]?)(?=\d|\.\d)\d*(\.\d*)?([Ee]([+-]?\d+))?$/ ) {
+            warn "Property '$property' value '$value' must be numeric"
+              . " in layout options\n";
+            return;
+        }
+
+        if ( $value < 0 || $value > 1 ) {
+            warn "Property '$property' value '$value' must be in range "
+              . "0 < x <= 1 in layout options\n";
+            return;
+        }
+
+        # Convert to the format used by Excel for easier testing
+        $layout->{$property} = sprintf "%.17g", $value;
+    }
+
+    return $layout;
+}
 
 
 ###############################################################################
@@ -1449,7 +1577,10 @@ sub _get_font_style_attributes {
     push @attributes, ( 'i'  => $font->{_italic} ) if defined $font->{_italic};
     push @attributes, ( 'u' => 'sng' ) if defined $font->{_underline};
 
-    push @attributes, ( 'baseline' => $font->{_baseline} );
+    # Turn off baseline when testing fonts that don't have it.
+    if ($font->{_baseline} != -1) {
+        push @attributes, ( 'baseline' => $font->{_baseline} );
+    }
 
     return @attributes;
 }
@@ -1625,8 +1756,36 @@ sub _write_chart {
     $self->xml_start_tag( 'c:chart' );
 
     # Write the chart title elements.
-    $self->_write_title(undef,$self->{_title_formula},$self->{_title_name},
-                        $self->{_title_data_id}, $self->{_title_font},"en-US");
+
+    if ( $self->{_title_none} ) {
+
+        # Turn off the title.
+        $self->_write_auto_title_deleted();
+    }
+    else {
+        my $title;
+        if ( $title = $self->{_title_formula} ) {
+            $self->_write_title_formula(
+
+                $title,
+                $self->{_title_data_id},
+                undef,
+                $self->{_title_font},
+                $self->{_title_layout},
+                $self->{_title_overlay}
+            );
+        }
+        elsif ( $title = $self->{_title_name} ) {
+            $self->_write_title_rich(
+
+                $title,
+                undef,
+                $self->{_title_font},
+                $self->{_title_layout},
+                $self->{_title_overlay}
+            );
+        }
+    }
 
     # Write the c:plotArea element.
     $self->_write_plot_area();
@@ -1677,7 +1836,7 @@ sub _write_plot_area {
     $self->xml_start_tag( 'c:plotArea' );
 
     # Write the c:layout element.
-    $self->_write_layout();
+    $self->_write_layout( $self->{_plotarea}->{_layout}, 'plot' );
 
     # Write the subclass chart type elements for primary and secondary axes.
     $self->_write_chart_type( primary_axes => 1 );
@@ -1725,15 +1884,19 @@ sub _write_plot_area {
 #
 sub _write_layout {
 
-    my $self = shift;
+    my $self   = shift;
     my $layout = shift;
+    my $type   = shift;
 
-    if (defined($layout)) {
-      $self->xml_start_tag( 'c:layout' );
-      $self->_write_manual_layout($layout);
-      $self->xml_end_tag( 'c:layout' );
-    } else {
-      $self->xml_empty_tag( 'c:layout' );
+    if ( !$layout ) {
+        # Automatic layout.
+        $self->xml_empty_tag( 'c:layout' );
+    }
+    else {
+        # User defined manual layout.
+        $self->xml_start_tag( 'c:layout' );
+        $self->_write_manual_layout( $layout, $type );
+        $self->xml_end_tag( 'c:layout' );
     }
 }
 
@@ -1744,40 +1907,32 @@ sub _write_layout {
 # Write the <c:manualLayout> element.
 #
 sub _write_manual_layout {
-    my $self = shift;
+
+    my $self   = shift;
     my $layout = shift;
+    my $type   = shift;
 
-    if (defined($layout)) {
-      $self->xml_start_tag( 'c:manualLayout' );
+    $self->xml_start_tag( 'c:manualLayout' );
 
-      # Write the c:xMode element.
-      my @attributes = ( 'val' => "edge" );
-      $self->xml_empty_tag( 'c:xMode', @attributes );
-
-      # Write the c:yMode element.
-      @attributes = ( 'val' => "edge" );
-      $self->xml_empty_tag( 'c:yMode', @attributes );
-
-      # Write the c:x element.
-      @attributes = ( 'val' => $layout->{x} );
-      $self->xml_empty_tag( 'c:x', @attributes );
-
-      # Write the c:y element.
-      @attributes = ( 'val' => $layout->{y} );
-      $self->xml_empty_tag( 'c:y', @attributes );
-
-      # Write the c:w element.
-      @attributes = ( 'val' => $layout->{w} );
-      $self->xml_empty_tag( 'c:w', @attributes );
-
-      # Write the c:h element.
-      @attributes = ( 'val' => $layout->{h} );
-      $self->xml_empty_tag( 'c:h', @attributes );
-
-      $self->xml_end_tag( 'c:manualLayout' );
+    # Plotarea has a layoutTarget element.
+    if ( $type eq 'plot' ) {
+        $self->xml_empty_tag( 'c:layoutTarget', ( 'val' => 'inner' ) );
     }
-}
 
+    # Set the x, y positions.
+    $self->xml_empty_tag( 'c:xMode', ( 'val' => 'edge' ) );
+    $self->xml_empty_tag( 'c:yMode', ( 'val' => 'edge' ) );
+    $self->xml_empty_tag( 'c:x', ( 'val' => $layout->{x} ) );
+    $self->xml_empty_tag( 'c:y', ( 'val' => $layout->{y} ) );
+
+    # For plotarea and legend set the width and height.
+    if ( $type ne 'text' ) {
+        $self->xml_empty_tag( 'c:w', ( 'val' => $layout->{width} ) );
+        $self->xml_empty_tag( 'c:h', ( 'val' => $layout->{height} ) );
+    }
+
+    $self->xml_end_tag( 'c:manualLayout' );
+}
 
 ##############################################################################
 #
@@ -1874,6 +2029,11 @@ sub _write_ser {
     # Write the c:val element.
     $self->_write_val( $series );
 
+    # Write the c:smooth element.
+    if ( $self->{_smooth_allowed} ) {
+        $self->_write_c_smooth( $series->{_smooth} );
+    }
+
     $self->xml_end_tag( 'c:ser' );
 }
 
@@ -1925,7 +2085,7 @@ sub _write_series_name {
 
     my $name;
     if ( $name = $series->{_name_formula} ) {
-        $self->_write_tx( $name, $series->{_name_id} );
+        $self->_write_tx_formula( $name, $series->{_name_id} );
     }
     elsif ( $name = $series->{_name} ) {
         $self->_write_tx_value( $name );
@@ -2176,9 +2336,16 @@ sub _write_cat_axis {
     $self->_write_minor_gridlines( $x_axis->{_minor_gridlines} );
 
     # Write the axis title elements.
-    $self->_write_title($horiz,$x_axis->{_formula},$x_axis->{_name},
-                        $x_axis->{_data_id},$x_axis->{_name_font},"en-US",
-                        $x_axis->{_name_rotation});
+    my $title;
+    if ( $title = $x_axis->{_formula} ) {
+
+        $self->_write_title_formula( $title, $x_axis->{_data_id}, $horiz,
+            $x_axis->{_name_font}, $x_axis->{_layout} );
+    }
+    elsif ( $title = $x_axis->{_name} ) {
+        $self->_write_title_rich( $title, $horiz, $x_axis->{_name_font},
+            $x_axis->{_layout} );
+    }
 
     # Write the c:numFmt element.
     $self->_write_cat_number_format( $x_axis );
@@ -2190,8 +2357,7 @@ sub _write_cat_axis {
     $self->_write_tick_label_pos( $x_axis->{_label_position} );
 
     # Write the axis font elements.
-    $self->_write_axis_font( $x_axis->{_num_font},
-                             $x_axis->{_num_rotation} );
+    $self->_write_axis_font( $x_axis->{_num_font} );
 
     # Write the c:crossAx element.
     $self->_write_cross_axis( $axis_ids->[1] );
@@ -2275,9 +2441,15 @@ sub _write_val_axis {
     $self->_write_minor_gridlines( $y_axis->{_minor_gridlines} );
 
     # Write the axis title elements.
-    $self->_write_title($horiz,$y_axis->{_formula},$y_axis->{_name},
-                        $y_axis->{_data_id},$y_axis->{_name_font},"en-US",
-                        $y_axis->{_name_rotation});
+    my $title;
+    if ( $title = $y_axis->{_formula} ) {
+        $self->_write_title_formula( $title, $y_axis->{_data_id}, $horiz,
+            $y_axis->{_name_font}, $y_axis->{_layout} );
+    }
+    elsif ( $title = $y_axis->{_name} ) {
+        $self->_write_title_rich( $title, $horiz, $y_axis->{_name_font},
+            $y_axis->{_layout} );
+    }
 
     # Write the c:numberFormat element.
     $self->_write_number_format( $y_axis );
@@ -2289,8 +2461,7 @@ sub _write_val_axis {
     $self->_write_tick_label_pos( $y_axis->{_label_position} );
 
     # Write the axis font elements.
-    $self->_write_axis_font( $y_axis->{_num_font},
-                             $y_axis->{_num_rotation} );
+    $self->_write_axis_font( $y_axis->{_num_font} );
 
     # Write the c:crossAx element.
     $self->_write_cross_axis( $axis_ids->[0] );
@@ -2308,7 +2479,7 @@ sub _write_val_axis {
     }
 
     # Write the c:crossBetween element.
-    $self->_write_cross_between();
+    $self->_write_cross_between( $x_axis->{_position_axis} );
 
     # Write the c:majorUnit element.
     $self->_write_c_major_unit( $y_axis->{_major_unit} );
@@ -2364,9 +2535,15 @@ sub _write_cat_val_axis {
     $self->_write_minor_gridlines( $x_axis->{_minor_gridlines} );
 
     # Write the axis title elements.
-    $self->_write_title($horiz,$x_axis->{_formula},$x_axis->{_name},
-                        $x_axis->{_data_id},$x_axis->{_name_font},"en-US",
-                        $x_axis->{_name_rotation});
+    my $title;
+    if ( $title = $x_axis->{_formula} ) {
+        $self->_write_title_formula( $title, $y_axis->{_data_id}, $horiz,
+            $x_axis->{_name_font}, $x_axis->{_layout} );
+    }
+    elsif ( $title = $x_axis->{_name} ) {
+        $self->_write_title_rich( $title, $horiz, $x_axis->{_name_font},
+            $x_axis->{_layout} );
+    }
 
     # Write the c:numberFormat element.
     $self->_write_number_format( $x_axis );
@@ -2378,8 +2555,7 @@ sub _write_cat_val_axis {
     $self->_write_tick_label_pos( $x_axis->{_label_position} );
 
     # Write the axis font elements.
-    $self->_write_axis_font( $x_axis->{_num_font},
-                             $x_axis->{_num_rotation} );
+    $self->_write_axis_font( $x_axis->{_num_font} );
 
     # Write the c:crossAx element.
     $self->_write_cross_axis( $axis_ids->[1] );
@@ -2397,7 +2573,7 @@ sub _write_cat_val_axis {
     }
 
     # Write the c:crossBetween element.
-    $self->_write_cross_between();
+    $self->_write_cross_between( $y_axis->{_position_axis} );
 
     # Write the c:majorUnit element.
     $self->_write_c_major_unit( $x_axis->{_major_unit} );
@@ -2452,9 +2628,15 @@ sub _write_date_axis {
     $self->_write_minor_gridlines( $x_axis->{_minor_gridlines} );
 
     # Write the axis title elements.
-    $self->_write_title(undef,$x_axis->{_formula},$x_axis->{_name},
-                        $x_axis->{_data_id},$x_axis->{_name_font},"en-US",
-                        $x_axis->{_name_rotation});
+    my $title;
+    if ( $title = $x_axis->{_formula} ) {
+        $self->_write_title_formula( $title, $x_axis->{_data_id}, undef,
+            $x_axis->{_name_font}, $x_axis->{_layout} );
+    }
+    elsif ( $title = $x_axis->{_name} ) {
+        $self->_write_title_rich( $title, undef, $x_axis->{_name_font},
+            $x_axis->{_layout} );
+    }
 
     # Write the c:numFmt element.
     $self->_write_number_format( $x_axis );
@@ -2466,8 +2648,7 @@ sub _write_date_axis {
     $self->_write_tick_label_pos( $x_axis->{_label_position} );
 
     # Write the axis font elements.
-    $self->_write_axis_font( $x_axis->{_num_font},
-                             $x_axis->{_num_rotation} );
+    $self->_write_axis_font( $x_axis->{_num_font} );
 
     # Write the c:crossAx element.
     $self->_write_cross_axis( $axis_ids->[1] );
@@ -2964,7 +3145,7 @@ sub _write_cross_between {
 
     my $self = shift;
 
-    my $val = $self->{_cross_between} || 'between';
+    my $val = shift || $self->{_cross_between};
 
     my @attributes = ( 'val' => $val );
 
@@ -3054,6 +3235,7 @@ sub _write_legend {
 
     my $self          = shift;
     my $position      = $self->{_legend_position};
+    my $font          = $self->{_legend_font};
     my @delete_series = ();
     my $overlay       = 0;
 
@@ -3092,15 +3274,15 @@ sub _write_legend {
     }
 
     # Write the c:layout element.
-    exists($self->{_legend_layout})?
-        $self->_write_layout($self->{_legend_layout}):
-        $self->_write_layout();
+    $self->_write_layout( $self->{_legend_layout}, 'legend' );
+
+    # Write the c:txPr element.
+    if ($font) {
+        $self->_write_tx_pr( undef, $font );
+    }
 
     # Write the c:overlay element.
     $self->_write_overlay() if $overlay;
-
-    # Write the c:txPr element.
-    $self->_write_tx_pr( undef, $self->{_legend_font}, undef);
 
     $self->xml_end_tag( 'c:legend' );
 }
@@ -3267,33 +3449,45 @@ sub _write_page_setup {
 
 ##############################################################################
 #
-# _write_title()
+# _write_auto_title_deleted()
 #
-# Write the <c:title> element.
+# Write the <c:autoTitleDeleted> element.
 #
-sub _write_title {
+sub _write_auto_title_deleted {
 
-    my $self     = shift;
-    my $horiz    = shift;
-    my $formula  = shift;
-    my $name     = shift;
-    my $data_id  = shift;
-    my $font     = shift;
-    my $lang     = shift;
-    my $rotation = shift;
+    my $self = shift;
 
-    return unless ($formula || $name);
+    my @attributes = ( 'val' => 1 );
+
+    $self->xml_empty_tag( 'c:autoTitleDeleted', @attributes );
+}
+
+
+##############################################################################
+#
+# _write_title_rich()
+#
+# Write the <c:title> element for a rich string.
+#
+sub _write_title_rich {
+
+    my $self    = shift;
+    my $title   = shift;
+    my $horiz   = shift;
+    my $font    = shift;
+    my $layout  = shift;
+    my $overlay = shift;
 
     $self->xml_start_tag( 'c:title' );
 
     # Write the c:tx element.
-    $self->_write_tx( $formula || $name, $data_id, $horiz, $font, $rotation );
+    $self->_write_tx_rich( $title, $horiz, $font );
 
     # Write the c:layout element.
-    $self->_write_layout();
+    $self->_write_layout( $layout, 'text' );
 
-    # Write the c:txPr element.
-    $self->_write_tx_pr( $horiz, $font, $lang) if ($formula);
+    # Write the c:overlay element.
+    $self->_write_overlay() if $overlay;
 
     $self->xml_end_tag( 'c:title' );
 }
@@ -3301,34 +3495,55 @@ sub _write_title {
 
 ##############################################################################
 #
-# _write_tx()
+# _write_title_formula()
 #
-# Write the <c:tx> element for chart.
+# Write the <c:title> element for a rich string.
 #
-sub _write_tx {
+sub _write_title_formula {
 
-    my $self     = shift;
-    my $title    = shift;
-    my $data_id  = shift;
-    my $horiz    = shift;
-    my $font     = shift;
-    my $rotation = shift;
+    my $self    = shift;
+    my $title   = shift;
+    my $data_id = shift;
+    my $horiz   = shift;
+    my $font    = shift;
+    my $layout  = shift;
+    my $overlay = shift;
+
+    $self->xml_start_tag( 'c:title' );
+
+    # Write the c:tx element.
+    $self->_write_tx_formula( $title, $data_id );
+
+    # Write the c:layout element.
+    $self->_write_layout( $layout, 'text' );
+
+    # Write the c:overlay element.
+    $self->_write_overlay() if $overlay;
+
+    # Write the c:txPr element.
+    $self->_write_tx_pr( $horiz, $font );
+
+    $self->xml_end_tag( 'c:title' );
+}
+
+
+##############################################################################
+#
+# _write_tx_rich()
+#
+# Write the <c:tx> element.
+#
+sub _write_tx_rich {
+
+    my $self  = shift;
+    my $title = shift;
+    my $horiz = shift;
+    my $font  = shift;
 
     $self->xml_start_tag( 'c:tx' );
 
-    my $data;
-    if ( defined $data_id ) {
-        $data = $self->{_formula_data}->[$data_id];
-
-        # Write the c:strRef element.
-        $self->_write_str_ref( $title, $data, 'str' );
-
-    } else {
-
-        # Write the c:rich element.
-        $self->_write_rich( $title, $horiz, $font, $rotation );
-
-    }
+    # Write the c:rich element.
+    $self->_write_rich( $title, $horiz, $font );
 
     $self->xml_end_tag( 'c:tx' );
 }
@@ -3356,28 +3571,53 @@ sub _write_tx_value {
 
 ##############################################################################
 #
+# _write_tx_formula()
+#
+# Write the <c:tx> element.
+#
+sub _write_tx_formula {
+
+    my $self    = shift;
+    my $title   = shift;
+    my $data_id = shift;
+    my $data;
+
+    if ( defined $data_id ) {
+        $data = $self->{_formula_data}->[$data_id];
+    }
+
+    $self->xml_start_tag( 'c:tx' );
+
+    # Write the c:strRef element.
+    $self->_write_str_ref( $title, $data, 'str' );
+
+    $self->xml_end_tag( 'c:tx' );
+}
+
+
+##############################################################################
+#
 # _write_rich()
 #
 # Write the <c:rich> element.
 #
 sub _write_rich {
 
-    my $self     = shift;
-    my $title    = shift;
-    my $horiz    = shift;
-    my $font     = shift;
-    my $rotation = shift;
+    my $self  = shift;
+    my $title = shift;
+    my $horiz = shift;
+    my $font  = shift;
 
     $self->xml_start_tag( 'c:rich' );
 
     # Write the a:bodyPr element.
-    $self->_write_a_body_pr( $horiz, $rotation );
+    $self->_write_a_body_pr( $horiz );
 
     # Write the a:lstStyle element.
     $self->_write_a_lst_style();
 
     # Write the a:p element.
-    $self->_write_a_p( $title, $font );
+    $self->_write_a_p_rich( $title, $font );
 
     $self->xml_end_tag( 'c:rich' );
 }
@@ -3391,18 +3631,17 @@ sub _write_rich {
 #
 sub _write_a_body_pr {
 
-    my $self     = shift;
-    my $horiz    = shift;
-    my $rotation = shift;
-    my $rot      = $self->_get_rotation($rotation) || -5400000;
-    my $vert     = 'horz';
+    my $self  = shift;
+    my $horiz = shift;
+    my $rot   = -5400000;
+    my $vert  = 'horz';
 
     my @attributes = (
         'rot'  => $rot,
         'vert' => $vert,
     );
 
-    @attributes = () if !($horiz || $rotation);
+    @attributes = () if !$horiz;
 
     $self->xml_empty_tag( 'a:bodyPr', @attributes );
 }
@@ -3410,20 +3649,22 @@ sub _write_a_body_pr {
 
 ##############################################################################
 #
-# _get_rotation()
+# _write_axis_body_pr()
 #
-# Convert user specified rotation to internal rotation value.
+# Write the <a:bodyPr> element for axis fonts.
 #
-sub _get_rotation {
+sub _write_axis_body_pr {
 
-    my $self=shift;
-    my $rot=shift;
+    my $self = shift;
+    my $rot  = shift;
+    my $vert = shift;
 
-    if (defined($rot)) {
-      $rot=$rot*-60000;
-    }
+    my @attributes = ();
 
-    return $rot;
+    push @attributes, ( 'rot'  => $rot )  if defined $rot;
+    push @attributes, ( 'vert' => $vert ) if defined $vert;
+
+    $self->xml_empty_tag( 'a:bodyPr', @attributes );
 }
 
 
@@ -3443,51 +3684,58 @@ sub _write_a_lst_style {
 
 ##############################################################################
 #
-# _write_a_p()
+# _write_a_p_rich()
 #
-# Write the <a:p> element.
+# Write the <a:p> element for rich string titles.
 #
-sub _write_a_p {
+sub _write_a_p_rich {
 
-    my $self = shift;
-    my $text = shift;
-    my $font = shift;
-    my $lang = shift;
+    my $self  = shift;
+    my $title = shift;
+    my $font  = shift;
 
-    if (defined($text) || defined($font) || defined($lang)) {
+    $self->xml_start_tag( 'a:p' );
 
-        $self->xml_start_tag( 'a:p' );
+    # Write the a:pPr element.
+    $self->_write_a_p_pr_rich( $font );
 
-        # Write the a:pPr element.
-        $self->_write_a_p_pr( $font );
+    # Write the a:r element.
+    $self->_write_a_r( $title, $font );
 
-        if (defined($text)) {
-            # Write the a:r element.
-            $self->_write_a_r( $text, $font );
-        }
-
-        if (defined($lang)) {
-            # Write the a:endParaRPr element.
-            $self->_write_a_end_para_rpr($lang);
-        }
-
-        $self->xml_end_tag( 'a:p' );
-
-    } else {
-
-        $self->xml_empty_tag( 'a:p' );
-
-    }
+    $self->xml_end_tag( 'a:p' );
 }
 
 
 ##############################################################################
 #
-# _write_a_p_pr()
+# _write_a_p_formula()
 #
-# Write the <a:pPr> element.
+# Write the <a:p> element for formula titles.
 #
-sub _write_a_p_pr {
+sub _write_a_p_formula {
+
+    my $self = shift;
+    my $font = shift;
+
+    $self->xml_start_tag( 'a:p' );
+
+    # Write the a:pPr element.
+    $self->_write_a_p_pr_formula( $font );
+
+    # Write the a:endParaRPr element.
+    $self->_write_a_end_para_rpr();
+
+    $self->xml_end_tag( 'a:p' );
+}
+
+
+##############################################################################
+#
+# _write_a_p_pr_rich()
+#
+# Write the <a:pPr> element for rich string titles.
+#
+sub _write_a_p_pr_rich {
 
     my $self = shift;
     my $font = shift;
@@ -3495,7 +3743,27 @@ sub _write_a_p_pr {
     $self->xml_start_tag( 'a:pPr' );
 
     # Write the a:defRPr element.
-    $self->_write_a_def_rpr($font);
+    $self->_write_a_def_rpr( $font );
+
+    $self->xml_end_tag( 'a:pPr' );
+}
+
+
+##############################################################################
+#
+# _write_a_p_pr_formula()
+#
+# Write the <a:pPr> element for formula titles.
+#
+sub _write_a_p_pr_formula {
+
+    my $self = shift;
+    my $font = shift;
+
+    $self->xml_start_tag( 'a:pPr' );
+
+    # Write the a:defRPr element.
+    $self->_write_a_def_rpr( $font );
 
     $self->xml_end_tag( 'a:pPr' );
 }
@@ -3509,8 +3777,8 @@ sub _write_a_p_pr {
 #
 sub _write_a_def_rpr {
 
-    my $self = shift;
-    my $font = shift;
+    my $self      = shift;
+    my $font      = shift;
     my $has_color = 0;
 
     my @style_attributes = $self->_get_font_style_attributes( $font );
@@ -3547,7 +3815,7 @@ sub _write_a_def_rpr {
 sub _write_a_end_para_rpr {
 
     my $self = shift;
-    my $lang = shift || 'en-US';
+    my $lang = 'en-US';
 
     my @attributes = ( 'lang' => $lang );
 
@@ -3586,19 +3854,6 @@ sub _write_a_r {
 # Write the <a:rPr> element.
 #
 sub _write_a_r_pr {
-
-    # my $self = shift;
-    # my $font  = shift;
-    # my $lang = 'en-US';
-
-    # my @attributes = ( 'lang' => $lang, );
-
-    # my @font_attrs = $self->_get_font_style_attributes($font);
-
-    # push @attributes, @font_attrs;
-
-    # $self->xml_empty_tag( 'a:rPr', @attributes );
-
 
     my $self      = shift;
     my $font      = shift;
@@ -3659,25 +3914,20 @@ sub _write_a_t {
 #
 sub _write_tx_pr {
 
-    my $self     = shift;
-    my $horiz    = shift;
-    my $font     = shift;
-    my $lang     = shift;
-    my $rotation = shift;
-
-    return unless (defined($font) || defined($lang) || defined($rotation) ||
-                   (defined($horiz) && defined($lang)));
+    my $self  = shift;
+    my $horiz = shift;
+    my $font  = shift;
 
     $self->xml_start_tag( 'c:txPr' );
 
     # Write the a:bodyPr element.
-    $self->_write_a_body_pr( $horiz, $rotation );
+    $self->_write_a_body_pr( $horiz );
 
     # Write the a:lstStyle element.
     $self->_write_a_lst_style();
 
     # Write the a:p element.
-    $self->_write_a_p( undef, $font, $lang );
+    $self->_write_a_p_formula( $font );
 
     $self->xml_end_tag( 'c:txPr' );
 }
@@ -3700,8 +3950,7 @@ sub _write_marker {
     $self->xml_start_tag( 'c:marker' );
 
     # Write the c:symbol element.
-    my $type = $marker->{type};
-    $self->_write_symbol( $type ) if $type;
+    $self->_write_symbol( $marker->{type} );
 
     # Write the c:size element.
     my $size = $marker->{size};
@@ -4508,8 +4757,6 @@ sub _write_delete {
     my $self = shift;
     my $val  = shift;
 
-    return unless $val;
-
     my @attributes = ( 'val' => $val );
 
     $self->xml_empty_tag( 'c:delete', @attributes );
@@ -4546,16 +4793,15 @@ sub _write_axis_font {
 
     my $self = shift;
     my $font = shift;
-    my $rotation = shift;
 
-    return unless $font || $rotation;
+    return unless $font;
 
     $self->xml_start_tag( 'c:txPr' );
-    $self->_write_a_body_pr( undef, $rotation );
+    $self->_write_axis_body_pr($font->{_rotation});
     $self->_write_a_lst_style();
     $self->xml_start_tag( 'a:p' );
 
-    $self->_write_a_p_pr( $font );
+    $self->_write_a_p_pr_rich( $font );
 
     $self->_write_a_end_para_rpr();
     $self->xml_end_tag( 'a:p' );
@@ -4739,8 +4985,16 @@ sub _write_err_bars {
         $self->_write_no_end_cap();
     }
 
-    if ( $error_bars->{_type} ne 'stdErr' ) {
+    if ( $error_bars->{_type} eq 'stdErr' ) {
 
+        # Don't need to write a c:errValType tag.
+    }
+    elsif ( $error_bars->{_type} eq 'cust' ) {
+
+        # Write the custom error tags.
+        $self->_write_custom_error( $error_bars );
+    }
+    else {
         # Write the c:val element.
         $self->_write_error_val( $error_bars->{_value} );
     }
@@ -4833,6 +5087,94 @@ sub _write_error_val {
     my @attributes = ( 'val' => $val );
 
     $self->xml_empty_tag( 'c:val', @attributes );
+}
+
+
+##############################################################################
+#
+# _write_custom_error()
+#
+# Write the custom error bars tags.
+#
+sub _write_custom_error {
+
+    my $self       = shift;
+    my $error_bars = shift;
+
+    if ( $error_bars->{_plus_values} ) {
+
+        # Write the c:plus element.
+        $self->xml_start_tag( 'c:plus' );
+
+        if ( ref $error_bars->{_plus_values} eq 'ARRAY' ) {
+            $self->_write_num_lit( $error_bars->{_plus_values} );
+        }
+        else {
+            $self->_write_num_ref( $error_bars->{_plus_values},
+                $error_bars->{_plus_data}, 'num' );
+        }
+
+        $self->xml_end_tag( 'c:plus' );
+    }
+
+    if ( $error_bars->{_minus_values} ) {
+
+        # Write the c:minus element.
+        $self->xml_start_tag( 'c:minus' );
+
+        if ( ref $error_bars->{_minus_values} eq 'ARRAY' ) {
+            $self->_write_num_lit( $error_bars->{_minus_values} );
+        }
+        else {
+            $self->_write_num_ref( $error_bars->{_minus_values},
+                $error_bars->{_minus_data}, 'num' );
+        }
+
+        $self->xml_end_tag( 'c:minus' );
+    }
+}
+
+
+
+##############################################################################
+#
+# _write_num_lit()
+#
+# Write the <c:numLit> element for literal number list elements.
+#
+sub _write_num_lit {
+
+    my $self = shift;
+    my $data  = shift;
+    my $count = @$data;
+
+
+    # Write the c:numLit element.
+    $self->xml_start_tag( 'c:numLit' );
+
+    # Write the c:formatCode element.
+    $self->_write_format_code( 'General' );
+
+    # Write the c:ptCount element.
+    $self->_write_pt_count( $count );
+
+    for my $i ( 0 .. $count - 1 ) {
+        my $token = $data->[$i];
+
+        # Write non-numeric data as 0.
+        if ( defined $token
+            && $token !~ /^([+-]?)(?=\d|\.\d)\d*(\.\d*)?([Ee]([+-]?\d+))?$/ )
+        {
+            $token = 0;
+        }
+
+        # Write the c:pt element.
+        $self->_write_pt( $i, $token );
+    }
+
+    $self->xml_end_tag( 'c:numLit' );
+
+
 }
 
 
@@ -4931,6 +5273,25 @@ sub _write_down_bars {
     else {
         $self->xml_empty_tag( 'c:downBars' );
     }
+}
+
+
+##############################################################################
+#
+# _write_c_smooth()
+#
+# Write the <c:smooth> element.
+#
+sub _write_c_smooth {
+
+    my $self    = shift;
+    my $smooth  = shift;
+
+    return unless $smooth;
+
+    my @attributes = ( 'val' => 1 );
+
+    $self->xml_empty_tag( 'c:smooth', @attributes );
 }
 
 
@@ -5106,6 +5467,10 @@ Set the properties of the series marker such as style and colour. See the L</SER
 
 Set the properties of the series trendline such as linear, polynomial and moving average types. See the L</SERIES OPTIONS> section below.
 
+=item * C<smooth>
+
+The C<smooth> option is used to set the smooth property of a line series. See the L</SERIES OPTIONS> section below.
+
 =item * C<y_error_bars>
 
 Set vertical error bounds for a chart series. See the L</SERIES OPTIONS> section below.
@@ -5193,16 +5558,16 @@ The properties that can be set are:
 
     name
     name_font
-    name_rotation
+    name_layout
     num_font
     num_format
-    num_rotation
     min
     max
     minor_unit
     major_unit
     crossing
     reverse
+    position_axis
     log_base
     label_position
     major_gridlines
@@ -5217,6 +5582,7 @@ These are explained below. Some properties are only applicable to value or categ
 
 =item * C<name>
 
+
 Set the name (title or caption) for the axis. The name is displayed below the X axis. The C<name> property is optional. The default is to have no axis name. (Applicable to category and value axes).
 
     $chart->set_x_axis( name => 'Quarterly results' );
@@ -5229,7 +5595,19 @@ Set the font properties for the axis title. (Applicable to category and value ax
 
     $chart->set_x_axis( name_font => { name => 'Arial', size => 10 } );
 
-See the L</CHART FONTS> section below.
+=item * C<name_layout>
+
+Set the C<(x, y)> position of the axis caption in chart relative units. (Applicable to category and value axes).
+
+    $chart->set_x_axis(
+        name        => 'X axis',
+        name_layout => {
+            x => 0.34,
+            y => 0.85,
+        }
+    );
+
+See the L</CHART LAYOUT> section below.
 
 =item * C<num_font>
 
@@ -5286,6 +5664,15 @@ B<For category axes the numeric value must be an integer> to represent the categ
 
 If crossing is omitted (the default) the crossing will be set automatically by Excel based on the chart data.
 
+=item * C<position_axis>
+
+Position the axis on or between the axis tick marks. (Applicable to category axes only.)
+
+There are two allowable values C<on_tick> and C<between>:
+
+    $chart->set_x_axis( position_axis => 'on_tick' );
+    $chart->set_x_axis( position_axis => 'between' );
+
 =item * C<reverse>
 
 Reverse the order of the axis categories or values. (Applicable to category and value axes.)
@@ -5339,30 +5726,6 @@ Configure the visibility of the axis.
 
     $chart->set_x_axis( visible => 0 );
 
-=item * C<number_font>
-
-Set the axis value font information such as name, size, ... See the L</CHART FORMATTING> section below. This font will be used for each value increment along the axis.
-
-   $chart->set_x_axis( number_font => { name=>"Arial", size=>"24" } );
-
-=item * C<label_font>
-
-Set the axis name font information such as name, size, ... See the L</CHART FORMATTING> section below. This font will be used to display the "name" value of this axis.
-
-    $chart->set_x_axis( label_font => { name=>"Arial", size=>"24" } );
-
-=item * C<number_rotation>
-
-Set the axis value rotaion in degrees. This rotation will be used for each value increment along the axis.
-
-   $chart->set_x_axis( number_rotation => 45 );
-
-=item * C<label_rotation>
-
-Set the axis name rotation in degrees. This rotation will be used to display the "name" value of this axis.
-
-    $chart->set_x_axis( label_rotation => 45 );
-
 =item * C<tick_lbl_skip>
 
 When the x axis is using string values this can be set to indicate if you want all string labels to be shown:
@@ -5378,18 +5741,6 @@ When the x axis is using string values this can be set to indicate if you want a
     $chart->set_x_axis( tick_mark_skip => 1 );
 
 or if you want the marks to skip some number of marks indicated by a value larger than 1. Value of 2 skips every other mark, value of 3 shows one mark then skips 2, ....
-
-=item * C<rotation>
-
-Rotate the label value specified degrees.
-
-    $chart->set_x_axis( rotation => 45 );
-
-=item * C<number_format>
-
-Set the axis unit number_format.
-
-    $chart->set_x_axis( number_format => "0.00" );
 
 =back
 
@@ -5472,6 +5823,31 @@ Set the name (title) for the chart. The name is displayed above the chart. The n
 
 Set the font properties for the chart title. See the L</CHART FONTS> section below.
 
+=item * C<overlay>
+
+Allow the title to be overlaid on the chart. Generally used with the layout property below.
+
+=item * C<layout>
+
+Set the C<(x, y)> position of the title in chart relative units:
+
+    $chart->set_title(
+        name    => 'Title',
+        overlay => 1,
+        layout  => {
+            x => 0.42,
+            y => 0.14,
+        }
+    );
+
+See the L</CHART LAYOUT> section below.
+
+=item * C<none>
+
+By default Excel adds an automatic chart title to charts with a single series and a user defined series name. The C<none> option turns this default title off. It also turns off all other C<set_title()> options.
+
+    $chart->set_title( none => 1 );
+
 =back
 
 
@@ -5479,11 +5855,20 @@ Set the font properties for the chart title. See the L</CHART FONTS> section bel
 
 The C<set_legend()> method is used to set properties of the chart legend.
 
-    $chart->set_legend( position => 'none' );
 
 The properties that can be set are:
 
 =over
+
+=item * C<none>
+
+The C<none> option turns off the chart legend. In Excel chart legends are on by default:
+
+    $chart->set_legend( none => 1 );
+
+Note, for backward compatibility, it is also possible to turn off the legend via the C<position> property:
+
+    $chart->set_legend( position => 'none' );
 
 =item * C<position>
 
@@ -5493,32 +5878,45 @@ Set the position of the chart legend.
 
 The default legend position is C<right>. The available positions are:
 
-    none
     top
     bottom
     left
     right
     overlay_left
     overlay_right
-
-=item * C<font>
-
-Set the font properties of the legend. See the L</CHART FORMATTING> section below. 
-
-    $chart->set_legend( font => { name=>"Arial", size=>"24" } );
+    none
 
 =item * C<layout>
 
-Set the legend layout position. Values are in percent of chart.
+Set the C<(x, y)> position of the legend in chart relative units:
 
-    $chart->set_legend( layout => { x=>0.3, y=>0.9, w=>0.4, h=>0.1 } );
+    $chart->set_legend(
+        layout => {
+            x      => 0.80,
+            y      => 0.37,
+            width  => 0.12,
+            height => 0.25,
+        }
+    );
 
-=item * delete_series
+See the L</CHART LAYOUT> section below.
+
+
+=item * C<delete_series>
 
 This allows you to remove 1 or more series from the the legend (the series will still display on the chart). This property takes an array ref as an argument and the series are zero indexed:
 
     # Delete/hide series index 0 and 2 from the legend.
     $chart->set_legend( delete_series => [0, 2] );
+
+=item * C<font>
+
+Set the font properties of the chart legend:
+
+    $chart->set_legend( font => { bold => 1, italic => 1 } );
+
+See the L</CHART FONTS> section below.
+
 
 =back
 
@@ -5566,6 +5964,21 @@ Set the border properties of the plotarea such as colour and style. See the L</C
 =item * C<fill>
 
 Set the fill properties of the plotarea such as colour. See the L</CHART FORMATTING> section below.
+
+=item * C<layout>
+
+Set the C<(x, y)> position of the plotarea in chart relative units:
+
+    $chart->set_plotarea(
+        layout => {
+            x      => 0.35,
+            y      => 0.26,
+            width  => 0.62,
+            height => 0.50,
+        }
+    );
+
+See the L</CHART LAYOUT> section below.
 
 =back
 
@@ -5667,6 +6080,7 @@ This section details the following properties of C<add_series()> in more detail:
     x_error_bars
     data_labels
     points
+    smooth
 
 =head2 Marker
 
@@ -5826,7 +6240,9 @@ Error bars can be added to a chart series to indicate error bounds in the data. 
 The following properties can be set for error bars in a chart series.
 
     type
-    value       (for all types except standard error)
+    value        (for all types except standard error and custom)
+    plus_values  (for custom only)
+    minus_values (for custom only)
     direction
     end_style
     line
@@ -5844,10 +6260,9 @@ The available error bars types are available:
     percentage
     standard_deviation
     standard_error
+    custom
 
-Note, the "custom" error bars type is not supported.
-
-All error bar types, except for C<standard_error> must also have a value associated with it for the error bounds:
+All error bar types, except for C<standard_error> and C<custom> must also have a value associated with it for the error bounds:
 
     $chart->add_series(
         values       => '=Sheet1!$B$1:$B$5',
@@ -5856,6 +6271,34 @@ All error bar types, except for C<standard_error> must also have a value associa
             value => 5,
         },
     );
+
+The C<custom> error bar type must specify C<plus_values> and C<minus_values> which should either by a C<Sheet1!$A$1:$A$5> type range formula or an arrayref of
+values:
+
+    $chart->add_series(
+        categories   => '=Sheet1!$A$1:$A$5',
+        values       => '=Sheet1!$B$1:$B$5',
+        y_error_bars => {
+            type         => 'custom',
+            plus_values  => '=Sheet1!$C$1:$C$5',
+            minus_values => '=Sheet1!$D$1:$D$5',
+        },
+    );
+
+    # or
+
+
+    $chart->add_series(
+        categories   => '=Sheet1!$A$1:$A$5',
+        values       => '=Sheet1!$B$1:$B$5',
+        y_error_bars => {
+            type         => 'custom',
+            plus_values  => [1, 1, 1, 1, 1],
+            minus_values => [2, 2, 2, 2, 2],
+        },
+    );
+
+Note, as in Excel the items in the C<minus_values> do not need to be negative.
 
 The C<direction> property sets the direction of the error bars. It should be one of the following:
 
@@ -5981,6 +6424,13 @@ The C<points> property takes an array ref of format options (see the L</CHART FO
         values => '=Sheet1!$A$1:$A$3',
         points => [ { fill => { color => '#FF0000' } } ],
     );
+
+=head2 Smooth
+
+The C<smooth> option is used to set the smooth property of a line series. It is only applicable to the C<Line> and C<Scatter> chart types.
+
+    $chart->add_series( values => '=Sheet1!$C$1:$C$5',
+                        smooth => 1 );
 
 
 =head1 CHART FORMATTING
@@ -6138,6 +6588,7 @@ The following font properties can be set for any chart object that they apply to
     bold
     italic
     underline
+    rotation
     color
 
 The following explains the available font properties:
@@ -6173,6 +6624,14 @@ Set the font italic property, should be 0 or 1:
 Set the font underline property, should be 0 or 1:
 
     $chart->set_x_axis( num_font => { underline => 1 } );
+
+=item * C<rotation>
+
+Set the font rotation in the range -90 to 90:
+
+    $chart->set_x_axis( num_font => { rotation => 45 } );
+
+This is useful for displaying large axis data such as dates in a more compact format.
 
 =item * C<color>
 
@@ -6223,6 +6682,78 @@ Here is an example of Font formatting in a Chart program:
     );
 
 
+
+=head1 CHART LAYOUT
+
+The position of the chart in the worksheet is controlled by the C<set_size()> method shown above.
+
+It is also possible to change the layout of the following chart sub-objects:
+
+    plotarea
+    legend
+    title
+    x_axis caption
+    y_axis caption
+
+Here are some examples:
+
+    $chart->set_plotarea(
+        layout => {
+            x      => 0.35,
+            y      => 0.26,
+            width  => 0.62,
+            height => 0.50,
+        }
+    );
+
+    $chart->set_legend(
+        layout => {
+            x      => 0.80,
+            y      => 0.37,
+            width  => 0.12,
+            height => 0.25,
+        }
+    );
+
+    $chart->set_title(
+        name   => 'Title',
+        layout => {
+            x => 0.42,
+            y => 0.14,
+        }
+    );
+
+    $chart->set_x_axis(
+        name        => 'X axis',
+        name_layout => {
+            x => 0.34,
+            y => 0.85,
+        }
+    );
+
+Note that it is only possible to change the width and height for the C<plotarea> and C<legend> objects. For the other text based objects the width and height are changed by the font dimensions.
+
+The layout units must be a float in the range C<0 < x <= 1> and are expressed as a percentage of the chart dimensions as shown below:
+
+=begin html
+
+<p><center><img src="http://jmcnamara.github.com/excel-writer-xlsx/images/examples/layout.png" width="826" height="423" alt="Chart object layout." /></center></p>
+
+=end html
+
+From this the layout units are calculated as follows:
+
+    layout:
+        width  = w / W
+        height = h / H
+        x      = a / W
+        y      = b / H
+
+These units are slightly cumbersome but are required by Excel so that the chart object positions remain relative to each other if the chart is resized by the user.
+
+Note that for C<plotarea> the origin is the top left corner in the plotarea itself and does not take into account the axes.
+
+
 =head1 WORKSHEET METHODS
 
 In Excel a chartsheet (i.e, a chart that isn't embedded) shares properties with data worksheets such as tab selection, headers, footers, margins, and print properties.
@@ -6254,36 +6785,37 @@ See L<Excel::Writer::XLSX> for a detailed explanation of these methods.
 Here is a complete example that demonstrates some of the available features when creating a chart.
 
     #!/usr/bin/perl
-    
+
     use strict;
     use warnings;
     use Excel::Writer::XLSX;
-    
+
     my $workbook  = Excel::Writer::XLSX->new( 'chart.xlsx' );
     my $worksheet = $workbook->add_worksheet();
     my $bold      = $workbook->add_format( bold => 1 );
-    
+
     # Add the worksheet data that the charts will refer to.
     my $headings = [ 'Number', 'Batch 1', 'Batch 2' ];
     my $data = [
         [ 2,  3,  4,  5,  6,  7 ],
         [ 10, 40, 50, 20, 10, 50 ],
         [ 30, 60, 70, 50, 40, 30 ],
+
     ];
-    
+
     $worksheet->write( 'A1', $headings, $bold );
     $worksheet->write( 'A2', $data );
-    
+
     # Create a new chart object. In this case an embedded chart.
     my $chart = $workbook->add_chart( type => 'column', embedded => 1 );
-    
+
     # Configure the first series.
     $chart->add_series(
         name       => '=Sheet1!$B$1',
         categories => '=Sheet1!$A$2:$A$7',
         values     => '=Sheet1!$B$2:$B$7',
     );
-    
+
     # Configure second series. Note alternative use of array ref to define
     # ranges: [ $sheetname, $row_start, $row_end, $col_start, $col_end ].
     $chart->add_series(
@@ -6291,18 +6823,18 @@ Here is a complete example that demonstrates some of the available features when
         categories => [ 'Sheet1', 1, 6, 0, 0 ],
         values     => [ 'Sheet1', 1, 6, 2, 2 ],
     );
-    
+
     # Add a chart title and some axis labels.
     $chart->set_title ( name => 'Results of sample analysis' );
     $chart->set_x_axis( name => 'Test number' );
     $chart->set_y_axis( name => 'Sample length (mm)' );
-    
+
     # Set an Excel chart style. Blue colors with white outline and shadow.
     $chart->set_style( 11 );
-    
+
     # Insert the chart into the worksheet (with an offset).
     $worksheet->insert_chart( 'D2', $chart, 25, 10 );
-    
+
     __END__
 
 =begin html
@@ -6327,6 +6859,51 @@ As such some of C<Excel::Writer::XLSX> axis properties can be set for a value ax
 For example the C<min> and C<max> properties can only be set for value axes and C<reverse> can be set for both. The type of axis that a property applies to is shown in the C<set_x_axis()> section of the documentation above.
 
 Some charts such as C<Scatter> and C<Stock> have two value axes.
+
+
+=head1 Secondary Axes
+
+It is possible to add a secondary axis of the same type to a chart by setting the C<y2_axis> or C<x2_axis> property of the series:
+
+    #!/usr/bin/perl
+
+    use strict;
+    use warnings;
+    use Excel::Writer::XLSX;
+
+    my $workbook  = Excel::Writer::XLSX->new( 'chart_secondary_axis.xlsx' );
+    my $worksheet = $workbook->add_worksheet();
+
+    # Add the worksheet data that the charts will refer to.
+    my $data = [
+        [ 2,  3,  4,  5,  6,  7 ],
+        [ 10, 40, 50, 20, 10, 50 ],
+
+    ];
+
+    $worksheet->write( 'A1', $data );
+
+    # Create a new chart object. In this case an embedded chart.
+    my $chart = $workbook->add_chart( type => 'line', embedded => 1 );
+
+    # Configure a series with a secondary axis
+    $chart->add_series(
+        values  => '=Sheet1!$A$1:$A$6',
+        y2_axis => 1,
+    );
+
+    $chart->add_series(
+        values => '=Sheet1!$B$1:$B$6',
+    );
+
+
+    # Insert the chart into the worksheet.
+    $worksheet->insert_chart( 'D2', $chart );
+
+    __END__
+
+
+Note, it isn't currently possible to add a secondary axis of a different chart type (for example line and column).
 
 
 =head1 TODO
@@ -6358,6 +6935,6 @@ John McNamara jmcnamara@cpan.org
 
 =head1 COPYRIGHT
 
-Copyright MM-MMXIII, John McNamara.
+Copyright MM-MMXIIII, John McNamara.
 
 All Rights Reserved. This module is free software. It may be used, redistributed and/or modified under the same terms as Perl itself.

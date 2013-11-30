@@ -22,7 +22,7 @@ use Carp;
 use Excel::Writer::XLSX::Chart;
 
 our @ISA     = qw(Excel::Writer::XLSX::Chart);
-our $VERSION = '0.67';
+our $VERSION = '0.74';
 
 
 ###############################################################################
@@ -39,6 +39,7 @@ sub new {
     $self->{_cross_between}    = 'midCat';
     $self->{_horiz_val_axis}   = 0;
     $self->{_val_axis_postion} = 'b';
+    $self->{_smooth_allowed}   = 1;
 
     bless $self, $class;
     return $self;
@@ -162,7 +163,13 @@ sub _write_ser {
     $self->_write_y_val( $series );
 
     # Write the c:smooth element.
-    $self->_write_c_smooth();
+    if ( $self->{_subtype} =~ /smooth/ && !defined $series->{_smooth} ) {
+        # Default is on for smooth scatter charts.
+        $self->_write_c_smooth( 1 );
+    }
+    else {
+        $self->_write_c_smooth( $series->{_smooth} );
+    }
 
     $self->xml_end_tag( 'c:ser' );
 }
@@ -184,7 +191,7 @@ sub _write_plot_area {
     $self->xml_start_tag( 'c:plotArea' );
 
     # Write the c:layout element.
-    $self->_write_layout();
+    $self->_write_layout( $self->{_plotarea}->{_layout}, 'plot' );
 
     # Write the subclass chart type elements for primary and secondary axes
     $self->_write_chart_type( primary_axes => 1 );
@@ -309,26 +316,6 @@ sub _write_scatter_style {
 
 ##############################################################################
 #
-# _write_c_smooth()
-#
-# Write the <c:smooth> element.
-#
-sub _write_c_smooth {
-
-    my $self    = shift;
-    my $subtype = $self->{_subtype};
-    my $val     = 1;
-
-    return unless $subtype =~ /smooth/;
-
-    my @attributes = ( 'val' => $val );
-
-    $self->xml_empty_tag( 'c:smooth', @attributes );
-}
-
-
-##############################################################################
-#
 # _modify_series_formatting()
 #
 # Add default formatting to the series data unless it has already been
@@ -363,7 +350,7 @@ sub _modify_series_formatting {
         for my $series ( @{ $self->{_series} } ) {
 
             # Set a marker type unless there is already a user defined type.
-            if ( !$series->{_marker}->{_defined} ) {
+            if ( !$series->{_marker} ) {
                 $series->{_marker} = {
                     type     => 'none',
                     _defined => 1,
@@ -550,7 +537,7 @@ John McNamara jmcnamara@cpan.org
 
 =head1 COPYRIGHT
 
-Copyright MM-MMXIII, John McNamara.
+Copyright MM-MMXIIII, John McNamara.
 
 All Rights Reserved. This module is free software. It may be used, redistributed and/or modified under the same terms as Perl itself.
 

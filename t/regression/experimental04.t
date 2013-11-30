@@ -53,10 +53,10 @@ $chart->add_series( values => '=Sheet1!$B$1:$B$5' );
 $chart->add_series( values => '=Sheet1!$C$1:$C$5' );
 
 $chart->set_legend( layout =>{
-                       x  => 0.85,
-                       y  => 0.85,
-                       w  => 0.15,
-                       h  => 0.25});
+                       x      => 0.85,
+                       y      => 0.85,
+                       width  => 0.15,
+                       height => 0.25});
 
 $worksheet->insert_chart( 'E9', $chart );
 

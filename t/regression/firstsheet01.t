@@ -18,7 +18,7 @@ use Test::More tests => 1;
 #
 my $filename     = 'firstsheet01.xlsx';
 my $dir          = 't/regression/';
-my $got_filename = $dir . $filename;
+my $got_filename = $dir . "ewx_$filename";
 my $exp_filename = $dir . 'xlsx_files/' . $filename;
 
 my $ignore_members  = [];
@@ -81,7 +81,7 @@ _is_deep_diff( $got, $expected, $caption );
 #
 # Cleanup.
 #
-#unlink $got_filename;
+unlink $got_filename;
 
 __END__
 

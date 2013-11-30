@@ -18,13 +18,13 @@ use Test::More tests => 1;
 #
 my $filename     = 'chart_stock02.xlsx';
 my $dir          = 't/regression/';
-my $got_filename = $dir . $filename;
+my $got_filename = $dir . "ewx_$filename";
 my $exp_filename = $dir . 'xlsx_files/' . $filename;
 
 my $ignore_members  = [];
 my $ignore_elements = {
     'xl/charts/chart1.xml' => [ '<c:formatCode', '<c:pageMargins' ],
-    'xl/workbook.xml'      => [ '<fileVersion',  '<calcPr' ],
+    'xl/workbook.xml'      => [ '<fileVersion' ],
     'xl/worksheets/sheet1.xml' =>
       [ '<sheetView', '<selection activeCell', '</sheetView' ],
 };

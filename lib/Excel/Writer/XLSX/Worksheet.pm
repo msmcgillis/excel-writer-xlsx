@@ -27,7 +27,7 @@ use Excel::Writer::XLSX::Utility
   qw(xl_cell_to_rowcol xl_rowcol_to_cell xl_col_to_name xl_range);
 
 our @ISA     = qw(Excel::Writer::XLSX::Package::XMLwriter);
-our $VERSION = '0.67';
+our $VERSION = '0.74';
 
 
 ###############################################################################
@@ -59,11 +59,10 @@ sub new {
     $self->{_str_total}    = $_[4];
     $self->{_str_unique}   = $_[5];
     $self->{_str_table}    = $_[6];
-    $self->{_table_count}  = $_[7];
-    $self->{_1904}         = $_[8];
-    $self->{_palette}      = $_[9];
-    $self->{_optimization} = $_[10] || 0;
-    $self->{_tempdir}      = $_[11];
+    $self->{_1904}         = $_[7];
+    $self->{_palette}      = $_[8];
+    $self->{_optimization} = $_[9] || 0;
+    $self->{_tempdir}      = $_[10];
 
     $self->{_ext_sheets}    = [];
     $self->{_fileclosed}    = 0;
@@ -194,6 +193,7 @@ sub new {
     $self->{_sparklines}             = [];
     $self->{_shapes}                 = [];
     $self->{_shape_hash}             = {};
+    $self->{_has_shapes}             = 0;
     $self->{_drawing}                = 0;
 
     $self->{_rstring}      = '';
@@ -592,8 +592,7 @@ sub set_column {
 
     # Store the col sizes for use when calculating image vertices taking
     # hidden columns into account. Also store the column formats.
-    my $width = $data[4] ? 0 : $data[2];    # Set width to zero if col is hidden
-    $width ||= 0;                           # Ensure width isn't undef.
+    my $width = $data[4] ? 0 : $data[2];    # Set width to zero if hidden.
     my $format = $data[3];
 
     my ( $firstcol, $lastcol ) = @data;
@@ -2896,6 +2895,10 @@ sub set_row {
     # Store the row change to allow optimisations.
     $self->{_row_size_changed} = 1;
 
+    if ($hidden) {
+        $height = 0;
+    }
+
     # Store the row sizes for use when calculating image vertices.
     $self->{_row_sizes}->{$row} = $height;
 }
@@ -3359,6 +3362,7 @@ sub conditional_formatting {
         # Check for a user defined multiple range like B3:K6,B8:K11.
         if ( $_[0] =~ /,/ ) {
             $user_range = $_[0];
+            $user_range =~ s/^=//;
             $user_range =~ s/\s*,\s*/ /g;
             $user_range =~ s/\$//g;
         }
@@ -3370,7 +3374,7 @@ sub conditional_formatting {
     if ( @_ != 5 && @_ != 3 ) { return -1 }
 
     # The final hashref contains the validation parameters.
-    my $param = pop;
+    my $options = pop;
 
     # Make the last row/col the same as the first if not defined.
     my ( $row1, $col1, $row2, $col2 ) = @_;
@@ -3385,11 +3389,14 @@ sub conditional_formatting {
 
 
     # Check that the last parameter is a hash list.
-    if ( ref $param ne 'HASH' ) {
-        carp "Last parameter '$param' in conditional_formatting() "
+    if ( ref $options ne 'HASH' ) {
+        carp "Last parameter in conditional_formatting() "
           . "must be a hash ref";
         return -3;
     }
+
+    # Copy the user params.
+    my $param = {%$options};
 
     # List of valid input parameters.
     my %valid_parameter = (
@@ -3828,10 +3835,6 @@ sub add_table {
         }
     }
 
-    # Table count is a member of Workbook, global to all Worksheet.
-    ${ $self->{_table_count} }++;
-    $table{_id} = ${ $self->{_table_count} };
-
     # Turn on Excel's defaults.
     $param->{banded_rows} = 1 if !defined $param->{banded_rows};
     $param->{header_row}  = 1 if !defined $param->{header_row};
@@ -3850,12 +3853,6 @@ sub add_table {
     if ( defined $param->{name} ) {
         $table{_name} = $param->{name};
     }
-    else {
-
-        # Set a default name.
-        $table{_name} = 'Table' . $table{_id};
-    }
-
 
     # Set the table style.
     if ( defined $param->{style} ) {
@@ -4013,7 +4010,7 @@ sub add_table {
 
                 my $token = $data->[$i]->[$j];
 
-                if ( $token ) {
+                if ( defined $token ) {
                     $self->write( $row, $col, $token, $col_formats[$j] );
                 }
 
@@ -4026,10 +4023,6 @@ sub add_table {
 
     # Store the table data.
     push @{ $self->{_tables} }, \%table;
-
-    # Store the link used for the rels file.
-    push @{ $self->{_external_table_links} },
-      [ '/table', '../tables/table' . $table{_id} . '.xml' ];
 
     return \%table;
 }
@@ -4619,13 +4612,11 @@ sub _position_object_pixels {
     my $x_abs = 0;    # Absolute distance to left side of object.
     my $y_abs = 0;    # Absolute distance to top  side of object.
 
-    my $is_drawing = 0;
-
-    ( $col_start, $row_start, $x1, $y1, $width, $height, $is_drawing ) = @_;
+    ( $col_start, $row_start, $x1, $y1, $width, $height ) = @_;
 
     # Calculate the absolute x offset of the top-left vertex.
     if ( $self->{_col_size_changed} ) {
-        for my $col_id ( 1 .. $col_start ) {
+        for my $col_id ( 0 .. $col_start -1 ) {
             $x_abs += $self->_size_col( $col_id );
         }
     }
@@ -4639,7 +4630,7 @@ sub _position_object_pixels {
     # Calculate the absolute y offset of the top-left vertex.
     # Store the column change to allow optimisations.
     if ( $self->{_row_size_changed} ) {
-        for my $row_id ( 1 .. $row_start ) {
+        for my $row_id ( 0 .. $row_start -1 ) {
             $y_abs += $self->_size_row( $row_id );
         }
     }
@@ -4685,13 +4676,6 @@ sub _position_object_pixels {
         $row_end++;
     }
 
-    # The following is only required for positioning drawing/chart objects
-    # and not comments. It is probably the result of a bug.
-    if ( $is_drawing ) {
-        $col_end-- if $width == 0;
-        $row_end-- if $height == 0;
-    }
-
     # The end vertices are whatever is left from the width and height.
     $x2 = $width;
     $y2 = $height;
@@ -4718,14 +4702,13 @@ sub _position_object_pixels {
 sub _position_object_emus {
 
     my $self       = shift;
-    my $is_drawing = 1;
 
     my (
         $col_start, $row_start, $x1, $y1,
         $col_end,   $row_end,   $x2, $y2,
         $x_abs,     $y_abs
 
-    ) = $self->_position_object_pixels( @_, $is_drawing );
+    ) = $self->_position_object_pixels( @_ );
 
     # Convert the pixel values to EMUs. See above.
     $x1    = int( 0.5 + 9_525 * $x1 );
@@ -4810,7 +4793,9 @@ sub _size_col {
     my $pixels;
 
     # Look up the cell value to see if it has been changed.
-    if ( exists $self->{_col_sizes}->{$col} ) {
+    if ( exists $self->{_col_sizes}->{$col}
+        and defined $self->{_col_sizes}->{$col} )
+    {
         my $width = $self->{_col_sizes}->{$col};
 
         # Convert to pixels.
@@ -4818,7 +4803,7 @@ sub _size_col {
             $pixels = 0;
         }
         elsif ( $width < 1 ) {
-            $pixels = int( $width * 12 + 0.5 );
+            $pixels = int( $width * ( $max_digit_width + $padding ) + 0.5 );
         }
         else {
             $pixels = int( $width * $max_digit_width + 0.5 ) + $padding;
@@ -5037,7 +5022,7 @@ sub _prepare_chart {
 
     my @dimensions =
       $self->_position_object_emus( $col, $row, $x_offset, $y_offset, $width,
-        $height, 0 );
+        $height );
 
     # Set the chart name for the embedded object if it has been specified.
     my $name = $chart->{_chart_name};
@@ -5347,6 +5332,8 @@ sub _prepare_shape {
 
         push @{ $self->{_external_drawing_links} },
           [ '/drawing', '../drawings/drawing' . $drawing_id . '.xml' ];
+
+        $self->{_has_shapes} = 1;
     }
     else {
         $drawing = $self->{_drawing};
@@ -5525,10 +5512,11 @@ sub _validate_shape {
 #
 sub _prepare_vml_objects {
 
-    my $self         = shift;
-    my $vml_data_id  = shift;
-    my $vml_shape_id = shift;
-    my $comment_id   = shift;
+    my $self           = shift;
+    my $vml_data_id    = shift;
+    my $vml_shape_id   = shift;
+    my $vml_drawing_id = shift;
+    my $comment_id     = shift;
     my @comments;
 
 
@@ -5559,7 +5547,7 @@ sub _prepare_vml_objects {
 
 
     push @{ $self->{_external_vml_links} },
-      [ '/vmlDrawing', '../drawings/vmlDrawing' . $comment_id . '.vml' ];
+      [ '/vmlDrawing', '../drawings/vmlDrawing' . $vml_drawing_id . '.vml' ];
 
 
     if ( $self->{_has_comments} ) {
@@ -5583,6 +5571,37 @@ sub _prepare_vml_objects {
     $self->{_vml_shape_id} = $vml_shape_id;
 
     return $count;
+}
+
+###############################################################################
+#
+# _prepare_tables()
+#
+# Set the table ids for the worksheet tables.
+#
+sub _prepare_tables {
+
+    my $self     = shift;
+    my $table_id = shift;
+
+
+    for my $table ( @{ $self->{_tables} } ) {
+
+        $table-> {_id} = $table_id;
+
+        # Set the table name unless defined by the user.
+        if ( !defined $table->{_name} ) {
+
+            # Set a default name.
+            $table->{_name} = 'Table' . $table_id;
+        }
+
+        # Store the link used for the rels file.
+        my $link = [ '/table', '../tables/table' . $table_id . '.xml' ];
+
+        push @{ $self->{_external_table_links} }, $link;
+        $table_id++;
+    }
 }
 
 
@@ -6340,10 +6359,20 @@ sub _write_col_info {
     # Convert column width from user units to character width.
     my $max_digit_width = 7;    # For Calabri 11.
     my $padding         = 5;
+
     if ( $width > 0 ) {
-        $width = int(
-            ( $width * $max_digit_width + $padding ) / $max_digit_width * 256 )
-          / 256;
+        if ( $width < 1 ) {
+            $width =
+              int( ( int( $width * ($max_digit_width + $padding) + 0.5 ) ) /
+                  $max_digit_width *
+                  256 ) / 256;
+        }
+        else {
+            $width =
+              int( ( int( $width * $max_digit_width + 0.5 ) + $padding ) /
+                  $max_digit_width *
+                  256 ) / 256;
+        }
     }
 
     my @attributes = (
@@ -7778,10 +7807,10 @@ sub _calculate_x_split_width {
 
     # Convert to pixels.
     if ( $width < 1 ) {
-        $pixels = int( $width * 12 + 0.5 );
+        $pixels = int( $width * ( $max_digit_width + $padding ) + 0.5 );
     }
     else {
-        $pixels = int( $width * $max_digit_width + 0.5 ) + $padding;
+          $pixels = int( $width * $max_digit_width + 0.5 ) + $padding;
     }
 
     # Convert to points.
@@ -8926,6 +8955,6 @@ John McNamara jmcnamara@cpan.org
 
 =head1 COPYRIGHT
 
-(c) MM-MMXIII, John McNamara.
+(c) MM-MMXIIII, John McNamara.
 
 All Rights Reserved. This module is free software. It may be used, redistributed and/or modified under the same terms as Perl itself.

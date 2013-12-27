@@ -2,7 +2,7 @@
 #
 # Tests the output of Excel::Writer::XLSX against Excel generated files.
 #
-# reverse('©'), January 2011, John McNamara, jmcnamara@cpan.org
+# reverse ('(c)'), January 2011, John McNamara, jmcnamara@cpan.org
 #
 
 use lib 't/lib';
@@ -16,9 +16,9 @@ use Test::More tests => 1;
 #
 # Tests setup.
 #
-my $filename     = 'experimental05.xlsx';
+my $filename     = 'chart_axis34.xlsx';
 my $dir          = 't/regression/';
-my $got_filename = $dir . $filename;
+my $got_filename = $dir . "ewx_$filename";
 my $exp_filename = $dir . 'xlsx_files/' . $filename;
 
 my $ignore_members  = [];
@@ -37,7 +37,7 @@ my $worksheet = $workbook->add_worksheet();
 my $chart     = $workbook->add_chart( type => 'line', embedded => 1 );
 
 # For testing, copy the randomly generated axis ids in the target xlsx file.
-$chart->{_axis_ids} = [ 47076480, 47078016 ];
+$chart->{_axis_ids} = [ 54712192, 54713728 ];
 
 my $data = [
     [ 1, 2, 3, 4,  5 ],

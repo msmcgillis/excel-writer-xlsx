@@ -2,7 +2,7 @@
 #
 # Tests the output of Excel::Writer::XLSX against Excel generated files.
 #
-# reverse('©'), January 2011, John McNamara, jmcnamara@cpan.org
+# reverse ('(c)'), January 2011, John McNamara, jmcnamara@cpan.org
 #
 
 use lib 't/lib';
@@ -16,14 +16,14 @@ use Test::More tests => 1;
 #
 # Tests setup.
 #
-my $filename     = 'experimental05.xlsx';
+my $filename     = 'chart_pie02.xlsx';
 my $dir          = 't/regression/';
-my $got_filename = $dir . $filename;
+my $got_filename = $dir . "ewx_$filename";
 my $exp_filename = $dir . 'xlsx_files/' . $filename;
 
 my $ignore_members  = [];
 
-my $ignore_elements = { 'xl/charts/chart1.xml' => ['<c:pageMargins'] };
+my $ignore_elements = {};
 
 
 ###############################################################################
@@ -34,25 +34,22 @@ use Excel::Writer::XLSX;
 
 my $workbook  = Excel::Writer::XLSX->new( $got_filename );
 my $worksheet = $workbook->add_worksheet();
-my $chart     = $workbook->add_chart( type => 'line', embedded => 1 );
-
-# For testing, copy the randomly generated axis ids in the target xlsx file.
-$chart->{_axis_ids} = [ 47076480, 47078016 ];
+my $chart     = $workbook->add_chart( type => 'pie', embedded => 1 );
 
 my $data = [
-    [ 1, 2, 3, 4,  5 ],
-    [ 2, 4, 6, 8,  10 ],
-    [ 3, 6, 9, 12, 15 ],
+    [  2,  4,  6 ],
+    [ 60, 30, 10 ],
 
 ];
 
 $worksheet->write( 'A1', $data );
 
-$chart->add_series( values => '=Sheet1!$A$1:$A$5' );
-$chart->add_series( values => '=Sheet1!$B$1:$B$5' );
-$chart->add_series( values => '=Sheet1!$C$1:$C$5' );
+$chart->add_series(
+    categories => '=Sheet1!$A$1:$A$3',
+    values     => '=Sheet1!$B$1:$B$3',
+);
 
-$chart->set_x_axis( interval_unit => 2 );
+$chart->set_legend( font => { bold => 1, italic => 1, baseline => -1 } );
 
 $worksheet->insert_chart( 'E9', $chart );
 

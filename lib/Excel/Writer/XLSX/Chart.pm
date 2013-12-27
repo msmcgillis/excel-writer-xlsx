@@ -26,7 +26,7 @@ use Excel::Writer::XLSX::Utility qw(xl_cell_to_rowcol
   xl_range_formula );
 
 our @ISA     = qw(Excel::Writer::XLSX::Package::XMLwriter);
-our $VERSION = '0.74';
+our $VERSION = '0.75';
 
 
 ###############################################################################
@@ -652,7 +652,7 @@ sub _convert_axis_args {
         _label_position    => $arg{label_position},
         _num_format        => $arg{num_format},
         _num_format_linked => $arg{num_format_linked},
-        _tick_lbl_skip     => $arg{tick_lbl_skip},
+        _interval_unit     => $arg{interval_unit},
         _tick_mark_skip    => $arg{tick_mark_skip},
         _visible           => defined $arg{visible} ? $arg{visible} : 1,
     };
@@ -2387,9 +2387,9 @@ sub _write_cat_axis {
     $self->_write_label_offset( 100 );
 
     # Write the c:tickLblSkip element.
-    $self->_write_tick_lbl_skip( $x_axis->{_tick_lbl_skip} );
+    $self->_write_tick_lbl_skip( $x_axis->{_interval_unit} );
 
-    # Write the c:auto element.
+    # Write the c:tick_mark_skip element.
     $self->_write_tick_mark_skip( $x_axis->{_tick_mark_skip} );
 
     $self->xml_end_tag( 'c:catAx' );
@@ -2673,6 +2673,9 @@ sub _write_date_axis {
 
     # Write the c:labelOffset element.
     $self->_write_label_offset( 100 );
+
+    # Write the c:tickLblSkip element.
+    $self->_write_tick_lbl_skip( $x_axis->{_interval_unit} );
 
     # Write the c:majorUnit element.
     $self->_write_c_major_unit( $x_axis->{_major_unit} );
@@ -2973,24 +2976,6 @@ sub _write_crosses {
     $self->xml_empty_tag( 'c:crosses', @attributes );
 }
 
-##############################################################################
-#
-# _write_tick_lbl_skip()
-#
-# Write the <c:tickLblSkip> element.
-#
-sub _write_tick_lbl_skip {
-
-    my $self = shift;
-    my $val  = shift;
-
-    return unless (defined($val));
-
-    my @attributes = ( 'val' => $val );
-
-    $self->xml_empty_tag( 'c:tickLblSkip', @attributes );
-}
-
 
 ##############################################################################
 #
@@ -3076,6 +3061,25 @@ sub _write_label_offset {
     my @attributes = ( 'val' => $val );
 
     $self->xml_empty_tag( 'c:lblOffset', @attributes );
+}
+
+
+##############################################################################
+#
+# _write_tick_lbl_skip()
+#
+# Write the <c:tickLblSkip> element.
+#
+sub _write_tick_lbl_skip {
+
+    my $self = shift;
+    my $val  = shift;
+
+    return unless $val;
+
+    my @attributes = ( 'val' => $val );
+
+    $self->xml_empty_tag( 'c:tickLblSkip', @attributes );
 }
 
 
@@ -3277,7 +3281,7 @@ sub _write_legend {
     $self->_write_layout( $self->{_legend_layout}, 'legend' );
 
     # Write the c:txPr element.
-    if ($font) {
+    if ( $font ) {
         $self->_write_tx_pr( undef, $font );
     }
 
@@ -5554,13 +5558,13 @@ The properties that can be set are:
     max
     minor_unit
     major_unit
+    interval_unit
     crossing
     reverse
     position_axis
     log_base
     label_position
     major_gridlines
-    tick_lbl_skip
     tick_mark_skip
     minor_gridlines
     visible
@@ -5639,6 +5643,12 @@ Set the increment of the major units in the axis range. (Applicable to value axe
 
     $chart->set_x_axis( major_unit => 2 );
 
+=item * C<interval_unit>
+
+Set the interval unit for a category axis. (Applicable to category axes only.)
+
+    $chart->set_x_axis( interval_unit => 2 );
+
 =item * C<crossing>
 
 Set the position where the y axis will cross the x axis. (Applicable to category and value axes.)
@@ -5714,14 +5724,6 @@ The minor gridline C<visible> property is off by default for all chart types.
 Configure the visibility of the axis.
 
     $chart->set_x_axis( visible => 0 );
-
-=item * C<tick_lbl_skip>
-
-When the x axis is using string values this can be set to indicate if you want all string labels to be shown:
-
-    $chart->set_x_axis( tick_lbl_skip => 1 );
-
-or if you want labels to skip some number of labels indicated by a value larger than 1. Value of 2 skips every other label, value of 3 shows one label then skips 2, ....
 
 =item * C<tick_mark_skip>
 
